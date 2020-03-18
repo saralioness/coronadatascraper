@@ -1,6 +1,10 @@
 # coronadatascraper
 > A scraper that pulls coronavirus case data from verified sources.
 
+This project exists to pull county-level data for COVID-19 from verified, high-quality sources.
+
+Every piece of data produced includes the URL where the data was sourced from as well as a rating of the source's technical quality (completeness, machine readability, best practices -- not accuracy).
+
 ## Where's the data?
 
 http://blog.lazd.net/coronadatascraper/
@@ -21,7 +25,7 @@ cd coronadatascraper
 git remote add upstream git@github.com:lazd/coronadatascraper.git
 ```
 
-If you've already cloned without `--recrusive`, run:
+If you've already cloned without `--recursive`, run:
 
 ```
 git submodule init
@@ -61,12 +65,34 @@ To re-generate old data from cache (or timeseries), run:
 yarn start --date=2020-3-12
 ```
 
+To output files without the date suffix, use:
+
+```
+yarn start --date=2020-3-12 -o
+```
+
 ### Generating timeseries data
 
 To generate timeseries data in `dist/timeseries*.*`, run:
 
 ```
 yarn timeseries
+```
+
+### Run only one scraper
+
+To scrape just one location, use `--location`/`-l`
+
+```
+yarn start --location "Ventura County, CA, USA"
+```
+
+### Skipping a scraper
+
+To skip a scraper, use `--skip`/`-s`
+
+```
+yarn start --skip "Ventura County, CA, USA"
 ```
 
 ### Building the website
@@ -100,6 +126,11 @@ Add the following directly to the scraper object if the data you're pulling in i
 * `county` - The county or parish
 * `state` - The state, province, or region
 * `country` - [ISO 3166-1 alpha-3 country code](https://en.wikipedia.org/wiki/ISO_3166-1_alpha-3)
+* `type` - on of `json`, `csv`, `table`, `list`, `paragraph`, `pdf`, `image`. assumes `list` if `undefined`.
+* `timeseries` - `true` if this source provides timeseries data, `false` or `undefined` if it only provides the latest data
+* `headless` - whether this source requires a headless browser to scrape
+* `ssl` - `true` or `undefined` if this host has a valid SSL certificate chain, `false` if not
+* `priority` - any number (negative or positive). `0` is default, higher priority wins if duplicate data is present, ties are broken by rating
 
 Your scraper should return a `data` object, or an array of objects, with some of the following information:
 
@@ -241,6 +272,18 @@ Scrapers need to be able to operate correctly on old data, so updates to scraper
 
 As you can see, you can change `this.url` within your function (but be sure to set it every time).
 
+Another example is when HTML on the page changes, you can simple change the selectors or Cheerio function calls:
+
+```javascript
+let $table;
+if (datetime.scrapeDateIsBefore('2020-3-16')) {
+  $table = $('table[summary="Texas COVID-19 Cases"]');
+}
+else {
+  $table = $('table[summary="COVID-19 Cases in Texas Counties"]');
+}
+```
+
 You can also use `datetime.scrapeDateIsAfter()` for more complex customization.
 
 ### Criteria for sources
@@ -258,6 +301,25 @@ Additional data is welcome.
 #### 3. Presumptive cases are considered confirmed
 
 In keeping with other datasets, presumptive cases should be considered part of the case total.
+
+### Source rating
+
+Sources are rated based on:
+
+1. **How hard is it to read?** - `csv` and `json` give best scores, with `table` right behind it, with `list` and `paragraph` worse. `pdf` gets no points, and `image` gets negative points.
+2. **Timeseries?** - Sources score points if they provide a timeseries.
+3. **Completeness** - Sources get points for having `cases`, `tested`, `deaths`, `recovered`, `country`, `state`, `county`, and `city`.
+4. **SSL** - Sources get points for serving over ssl
+5. **Headless?** - Sources get docked points if they require a headless scraper
+
+The maximium rating for a source is 1, the minimum is near 0. See [`lib/transform.calcuateRating`](blob/master/lib/transform.js) for the exact algorithm.
+
+All data in the output includes the `url` and the `rating` of the source.
+
+## SSL
+
+Some source don't use standard SSL certificates, resulting in fetching errors. You can add additional 
+SSL certificates in the `ssl` directory. They will automatically be used when fetching data.
 
 ## License
 

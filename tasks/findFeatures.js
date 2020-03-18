@@ -1,5 +1,3 @@
-import path from 'path';
-
 import turf from '@turf/turf';
 
 import * as fs from '../lib/fs.js';
@@ -12,7 +10,7 @@ function cleanProps(obj) {
     delete obj.wikipedia;
   }
 
-  for (let prop in obj) {
+  for (const prop in obj) {
     if (typeof obj[prop] === 'string' && obj[prop].trim() === '') {
       delete obj[prop];
     }
@@ -22,8 +20,8 @@ function cleanProps(obj) {
 }
 
 function takeOnlyProps(obj, props) {
-  let newObj = {};
-  for (let prop of props) {
+  const newObj = {};
+  for (const prop of props) {
     if (typeof obj[prop] !== 'undefined') {
       newObj[prop] = obj[prop];
     }
@@ -32,14 +30,15 @@ function takeOnlyProps(obj, props) {
 }
 
 function normalizeProps(obj) {
-  let newObj = {};
-  for (let prop in obj) {
+  const newObj = {};
+  // eslint-disable-next-line guard-for-in
+  for (const prop in obj) {
     newObj[prop.toLowerCase()] = obj[prop];
   }
   return newObj;
 }
 
-let props = ['name', 'name_en', 'abbrev', 'region', 'admin', 'postal', 'gu_a3', 'geonunit', 'pop_est', 'pop_year', 'gdp_md_est', 'gdp_year', 'iso_a2', 'iso_3166_2', 'type_en', 'wikipedia'];
+const props = ['name', 'name_en', 'abbrev', 'region', 'admin', 'postal', 'gu_a3', 'adm0_a3', 'geonunit', 'pop_est', 'pop_year', 'gdp_md_est', 'gdp_year', 'iso_a2', 'iso_3166_2', 'type_en', 'wikipedia'];
 
 const locationTransforms = {
   // Correct missing county
@@ -57,28 +56,30 @@ const locationTransforms = {
   'Faroe Islands': location => {
     location.country = 'Faroe Islands';
     delete location.state;
-  },
-
-  // Why is it UK, United Kingdom?
-  UK: location => {
-    delete location.state;
   }
 };
 
 function cleanFeatures(set) {
-  for (let feature of set.features) {
+  for (const feature of set.features) {
     feature.properties = cleanProps(takeOnlyProps(normalizeProps(feature.properties), props));
   }
 }
 
-const generateFeatures = ({ locations, report }) => {
+const generateFeatures = ({ locations, report, options, sourceRatings }) => {
+  const featureCollection = {
+    type: 'FeatureCollection',
+    features: []
+  };
+
+  let foundCount = 0;
+
   function storeFeature(feature, location) {
     let index = featureCollection.features.indexOf(feature);
     if (index === -1) {
       index = featureCollection.features.push(feature) - 1;
       if (feature.properties.geonunit) {
         feature.properties.shortName = feature.properties.name;
-        feature.properties.name = feature.properties.name + ', ' + feature.properties.geonunit;
+        feature.properties.name = `${feature.properties.name}, ${feature.properties.geonunit}`;
       }
     }
 
@@ -96,19 +97,15 @@ const generateFeatures = ({ locations, report }) => {
     foundCount++;
   }
 
-  let foundCount = 0;
-  let featureCollection = {
-    type: 'FeatureCollection',
-    features: []
-  };
-
-  return new Promise(async (resolve, reject) => {
+  return new Promise(async resolve => {
     console.log('⏳ Generating features...');
 
-    const usStates = await fs.readJSON('./coronavirus-data-sources/lib/us-states.json');
     const countryData = await fs.readJSON('./coronavirus-data-sources/geojson/world-countries.json');
     const usCountyData = await fs.readJSON('./coronavirus-data-sources/geojson/usa-counties.json');
+    const itaRegionsData = await fs.readJSON('./coronavirus-data-sources/geojson/ita-regions.json');
     const provinceData = await fs.readJSON('./coronavirus-data-sources/geojson/world-states-provinces.json');
+
+    provinceData.features = itaRegionsData.features.concat(provinceData.features);
 
     // Clean and normalize data first
     cleanFeatures(countryData);
@@ -116,7 +113,7 @@ const generateFeatures = ({ locations, report }) => {
 
     const errors = [];
 
-    locationLoop: for (let location of locations) {
+    locationLoop: for (const location of locations) {
       let found = false;
       let point;
       if (location.coordinates) {
@@ -124,15 +121,13 @@ const generateFeatures = ({ locations, report }) => {
       }
 
       // Breaks France
-      if (location.country === 'REU' ||
-          location.country === 'MTQ' ||
-          location.country === 'GUF') {
+      if (location.country === 'REU' || location.country === 'MTQ' || location.country === 'GUF') {
         console.warn('  ⚠️  Skipping %s because it breaks France', transform.getName(location));
         continue;
       }
 
       if (location.county === '(unassigned)') {
-        console.warn('  ⚠️  Skipping %s because it\'s unassigned',  transform.getName(location));
+        console.warn("  ⚠️  Skipping %s because it's unassigned", transform.getName(location));
         continue;
       }
 
@@ -141,22 +136,22 @@ const generateFeatures = ({ locations, report }) => {
         locationTransforms[location.state](location);
       }
 
-      if (location.state) {
+      if (location.state || location.county) {
         if (location.country === 'USA') {
           if (location.county) {
             // Find county
-            for (let feature of usCountyData.features) {
+            for (const feature of usCountyData.features) {
               if (!location.county) {
                 continue;
               }
 
-              if (feature.properties.name === location.county.replace('Parish', 'County') + ', ' + location.state) {
+              if (feature.properties.name === `${location.county.replace('Parish', 'County')}, ${location.state}`) {
                 found = true;
                 storeFeature(feature, location);
                 continue locationLoop;
               }
               if (point && feature.geometry) {
-                let poly = turf.feature(feature.geometry);
+                const poly = turf.feature(feature.geometry);
                 if (turf.booleanPointInPolygon(point, poly)) {
                   found = true;
                   storeFeature(feature, location);
@@ -165,7 +160,7 @@ const generateFeatures = ({ locations, report }) => {
               }
             }
           } else if (location.state) {
-            for (let feature of provinceData.features) {
+            for (const feature of provinceData.features) {
               if (location.state === feature.properties.postal) {
                 found = true;
                 storeFeature(feature, location);
@@ -176,15 +171,15 @@ const generateFeatures = ({ locations, report }) => {
         }
 
         // Check if the location exists within our provinces
-        for (let feature of provinceData.features) {
-          if (location.country === feature.properties.gu_a3 && (location.state === feature.properties.name || location.state === feature.properties.name_en || location.state === feature.properties.region)) {
+        for (const feature of provinceData.features) {
+          if ((location.country === feature.properties.gu_a3 || location.country === feature.properties.adm0_a3) && ((location.state && (location.state === feature.properties.name || location.state === feature.properties.name_en || location.state === feature.properties.region)) || (location.county && (location.county === feature.properties.name || location.county === feature.properties.name_en || location.county === feature.properties.region)))) {
             found = true;
             storeFeature(feature, location);
             break;
           }
 
           if (point && feature.geometry) {
-            let poly = turf.feature(feature.geometry);
+            const poly = turf.feature(feature.geometry);
             if (turf.booleanPointInPolygon(point, poly)) {
               found = true;
               storeFeature(feature, location);
@@ -207,9 +202,9 @@ const generateFeatures = ({ locations, report }) => {
         }
       } else {
         // Check if the location exists within our countries
-        for (let feature of countryData.features) {
+        for (const feature of countryData.features) {
           // Find by full name
-          if (location.country === feature.properties.name) {
+          if (location.country === feature.properties.adm0_a3 || location.country === feature.properties.gu_a3) {
             found = true;
             storeFeature(feature, location);
             break;
@@ -223,7 +218,7 @@ const generateFeatures = ({ locations, report }) => {
           }
 
           if (point && feature.geometry) {
-            let poly = turf.feature(feature.geometry);
+            const poly = turf.feature(feature.geometry);
 
             if (turf.booleanPointInPolygon(point, poly)) {
               found = true;
@@ -236,7 +231,7 @@ const generateFeatures = ({ locations, report }) => {
         // Check by province as a last resort
         if (!found) {
           // Check within provinces
-          for (let feature of provinceData.features) {
+          for (const feature of provinceData.features) {
             if (location.country === feature.properties.name) {
               found = true;
               storeFeature(feature, location);
@@ -251,7 +246,7 @@ const generateFeatures = ({ locations, report }) => {
             }
 
             if (point && feature.geometry) {
-              let poly = turf.feature(feature.geometry);
+              const poly = turf.feature(feature.geometry);
 
               if (turf.booleanPointInPolygon(point, poly)) {
                 found = true;
@@ -271,12 +266,12 @@ const generateFeatures = ({ locations, report }) => {
 
     console.log('✅ Found features for %d out of %d regions for a total of %d features', foundCount, Object.keys(locations).length, featureCollection.features.length);
 
-    report['findFeatures'] = {
+    report.findFeatures = {
       numFeaturesFound: foundCount,
       missingFeatures: errors
     };
 
-    resolve({ locations, featureCollection, report });
+    resolve({ locations, featureCollection, report, options, sourceRatings });
   });
 };
 

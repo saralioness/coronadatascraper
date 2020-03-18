@@ -1,6 +1,8 @@
-name: Test CI
+name: Deploy CI
 
-on: [push, pull_request]
+on:
+  schedule:
+    - cron: '0 4 * * *' # Runs at 9 PM PST every day (4:00 UTC)
 
 jobs:
   build:
@@ -30,6 +32,24 @@ jobs:
       - name: Test
         run: |
           yarn test
-      - name: Lint
+      - name: Build
         run: |
-          yarn lint
+          yarn build
+          yarn dateData
+      - name: Deploy
+        uses: JamesIves/github-pages-deploy-action@releases/v3
+        with:
+          ACCESS_TOKEN: ${{ secrets.GIT_SECRET }}
+          BRANCH: gh-pages # The branch the action should deploy to.
+          FOLDER: dist # The folder the action should deploy.
+      - name: Update cache
+        run: |
+          cd coronadatascraper-cache
+          git add .
+          git commit -m "Update cache following deployment" || echo "Nothing to push to cache"
+          git push origin HEAD:master || echo "Nothing to push to cache"
+      - name: Notify Slack
+        env:
+          SLACK_HOOK: ${{ secrets.SLACK_HOOK }}
+        run: |
+          curl -X POST -H 'Content-type: application/js' --data '{"text":"I just pushed a new release, go check it out at http://blog.lazd.net/coronadatascraper !"}' ${SLACK_HOOK}

@@ -8,14 +8,13 @@ const dataPath = path.join('./coronavirus-data-sources/population/');
   Read population data from a CSV with correct datatypes
 */
 async function readPopulationFromCSV(csvPath) {
-  let output = await fs.readCSV(path.resolve(dataPath, csvPath));
-  let populationData = {};
-  for (let item of output) {
+  const output = await fs.readCSV(path.resolve(dataPath, csvPath));
+  const populationData = {};
+  for (const item of output) {
     if (item.population) {
       populationData[item.name] = parseInt(item.population, 10);
     } else {
-      reject(`Invalid data in ${csvPath} for ${item.name}`);
-      return;
+      throw new Error(`Invalid data in ${csvPath} for ${item.name}`);
     }
   }
 
@@ -23,10 +22,11 @@ async function readPopulationFromCSV(csvPath) {
 }
 
 async function readPopulationData(featureCollection) {
-  let populations = {
+  const populations = {
     byCity: {},
     byCounty: {
-      USA: await readPopulationFromCSV('population-usa-counties.csv')
+      USA: await readPopulationFromCSV('population-usa-counties.csv'),
+      GBR: await readPopulationFromCSV('population-gbr-counties.csv')
     },
     byState: {
       China: await readPopulationFromCSV('population-china-admin-divisions.csv'),
@@ -39,13 +39,13 @@ async function readPopulationData(featureCollection) {
     supplemental: await readPopulationFromCSV('population-supplemental.csv')
   };
 
-  populations.byState.CHN = populations.byState['China'];
-  populations.byState.CAN = populations.byState['Canada'];
-  populations.byState.ITA = populations.byState['Italy'];
-  populations.byState.AUS = populations.byState['Australia'];
+  populations.byState.CHN = populations.byState.China;
+  populations.byState.CAN = populations.byState.Canada;
+  populations.byState.ITA = populations.byState.Italy;
+  populations.byState.AUS = populations.byState.Australia;
 
   // Store data from features
-  for (let feature of featureCollection.features) {
+  for (const feature of featureCollection.features) {
     if (feature.properties.pop_est) {
       populations.byCountry[feature.properties.name] = feature.properties.pop_est;
       if (feature.properties.name_en) {
@@ -60,10 +60,10 @@ async function readPopulationData(featureCollection) {
   return populations;
 }
 
-const generatePopulations = async ({ locations, featureCollection, report }) => {
+const generatePopulations = async ({ locations, featureCollection, report, options, sourceRatings }) => {
   console.log('⏳ Getting population data...');
 
-  let populations = await readPopulationData(featureCollection);
+  const populations = await readPopulationData(featureCollection);
 
   function getPopulation(location) {
     let population = null;
@@ -80,10 +80,10 @@ const generatePopulations = async ({ locations, featureCollection, report }) => 
     } else if (location.county) {
       if (populations.byCounty[location.country]) {
         // Try counties
-        let populationSource = populations.byCounty[location.country];
-        let countyNameReplaced = location.county.replace('Parish', 'County');
-        let countyNameJoined = location.county + ', ' + location.state;
-        let countyNameReplacedJoined = countyNameReplaced + ', ' + location.state;
+        const populationSource = populations.byCounty[location.country];
+        const countyNameReplaced = location.county.replace('Parish', 'County');
+        const countyNameJoined = `${location.county}, ${location.state}`;
+        const countyNameReplacedJoined = `${countyNameReplaced}, ${location.state}`;
 
         population = populationSource[location.county] || populationSource[countyNameReplaced] || populationSource[countyNameJoined] || populationSource[countyNameReplacedJoined];
       }
@@ -115,7 +115,7 @@ const generatePopulations = async ({ locations, featureCollection, report }) => 
 
     if (!population) {
       if (location.featureId) {
-        let feature = featureCollection.features[location.featureId];
+        const feature = featureCollection.features[location.featureId];
         if (feature.properties.pop_est) {
           population = feature.properties.pop_est;
         }
@@ -128,8 +128,8 @@ const generatePopulations = async ({ locations, featureCollection, report }) => 
   const errors = [];
 
   let populationFound = 0;
-  for (let location of locations) {
-    let population = getPopulation(location);
+  for (const location of locations) {
+    const population = getPopulation(location);
 
     if (population) {
       location.population = population;
@@ -141,12 +141,12 @@ const generatePopulations = async ({ locations, featureCollection, report }) => 
   }
   console.log('✅ Found population data for %d out of %d locations', populationFound, Object.keys(locations).length);
 
-  report['findPopulation'] = {
+  report.findPopulation = {
     numLocationsWithPopulation: populationFound,
     missingPopulations: errors
   };
 
-  return { locations, featureCollection, report };
+  return { locations, featureCollection, report, options, sourceRatings };
 };
 
 export default generatePopulations;

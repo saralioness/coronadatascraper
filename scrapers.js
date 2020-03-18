@@ -23,17 +23,17 @@ import * as fs from './lib/fs.js';
 */
 
 // Set county to this if you only have state data, but this isn't the entire state
-let UNASSIGNED = '(unassigned)';
+const UNASSIGNED = '(unassigned)';
 
-let scrapers = [
+const scrapers = [
   {
     state: 'AZ',
     country: 'USA',
     url: 'https://tableau.azdhs.gov/views/COVID-19Dashboard/COVID-19table?:isGuestRedirectFromVizportal=y&:embed=y',
-    _scraper: async function() {
+    async _scraper() {
       // let { browser, page } = await fetch.headless(this.url);
 
-      let counties = [];
+      const counties = [];
       // do stuff
 
       // await browser.close();
@@ -44,17 +44,18 @@ let scrapers = [
     url: 'https://opendata.arcgis.com/datasets/d14de7e28b0448ab82eb36d6f25b1ea1_0.csv',
     country: 'USA',
     state: 'IN',
+    aggregate: 'county',
     _countyMap: {
       'Verm.': 'Vermillion',
       'Vander.': 'Vanderburgh',
       'St Joseph': 'St. Joseph'
     },
-    scraper: async function() {
-      let data = await fetch.csv(this.url);
+    async scraper() {
+      const data = await fetch.csv(this.url);
 
-      let counties = [];
-      for (let county of data) {
-        let countyName = parse.string(county.COUNTYNAME)
+      const counties = [];
+      for (const county of data) {
+        let countyName = parse.string(county.COUNTYNAME);
         countyName = this._countyMap[countyName] || countyName;
         counties.push({
           county: transform.addCounty(countyName),
@@ -71,15 +72,16 @@ let scrapers = [
     url: 'https://opendata.arcgis.com/datasets/969678bce431494a8f64d7faade6e5b8_0.csv',
     country: 'USA',
     state: 'NC',
-    scraper: async function() {
-      let data = await fetch.csv(this.url);
+    aggregate: 'county',
+    async scraper() {
+      const data = await fetch.csv(this.url);
 
-      let counties = [];
-      for (let county of data) {
+      const counties = [];
+      for (const county of data) {
         counties.push({
           county: transform.addCounty(parse.string(county.County)),
           cases: parse.number(county.Total), // Includes presumptive
-          recovered: parse.number(county.Recovered),
+          // recovered: parse.number(county.Recovered),
           deaths: parse.number(county.Deaths)
         });
       }
@@ -94,11 +96,12 @@ let scrapers = [
     url: 'https://opendata.arcgis.com/datasets/8840fd8ac1314f5188e6cf98b525321c_0.csv',
     country: 'USA',
     state: 'NJ',
-    scraper: async function() {
-      let data = await fetch.csv(this.url);
+    aggregate: 'county',
+    async scraper() {
+      const data = await fetch.csv(this.url);
 
-      let counties = [];
-      for (let county of data) {
+      const counties = [];
+      for (const county of data) {
         counties.push({
           county: parse.string(county.COUNTY_LAB),
           cases: parse.number(county.Positives),
@@ -114,6 +117,7 @@ let scrapers = [
   {
     country: 'Canada',
     url: 'https://www.canada.ca/en/public-health/services/diseases/2019-novel-coronavirus-infection.html',
+    type: 'table',
     _reject: [
       {
         state: 'Repatriated travellers'
@@ -122,20 +126,21 @@ let scrapers = [
         state: 'Total cases'
       }
     ],
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    aggregate: 'state',
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
-      let $table = $('h2:contains("Current situation")')
+      const $table = $('h2:contains("Current situation")')
         .nextAll('table')
         .first();
 
-      let $trs = $table.find('tbody > tr');
+      const $trs = $table.find('tbody > tr');
 
-      let regions = [];
+      const regions = [];
 
       $trs.each((index, tr) => {
-        let $tr = $(tr);
-        let data = {
+        const $tr = $(tr);
+        const data = {
           state: parse.string($tr.find('td:first-child').text()),
           cases: parse.number($tr.find('td:nth-child(2)').text())
         };
@@ -149,7 +154,9 @@ let scrapers = [
   },
   {
     url: 'https://github.com/CSSEGISandData/COVID-19',
-    _priority: -1,
+    timeseries: true,
+    aggregate: 'state',
+    priority: -1,
     _urls: {
       cases: 'https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Confirmed.csv',
       deaths: 'https://raw.githubusercontent.com/CSSEGISandData/COVID-19/master/csse_covid_19_data/csse_covid_19_time_series/time_series_19-covid-Deaths.csv',
@@ -202,94 +209,88 @@ let scrapers = [
         'Country/Region': 'Australia'
       }
     ],
-    scraper: async function() {
+    async scraper() {
       // Build a hash of US counties
-      let jhuUSCountyMap = await fs.readJSON(path.join('coronavirus-data-sources', 'lib', 'jhuUSCountyMap.json'));
+      const jhuUSCountyMap = await fs.readJSON(path.join('coronavirus-data-sources', 'lib', 'jhuUSCountyMap.json'));
 
-      let getOldData = datetime.scrapeDateIsBefore('2020-3-12');
+      const getOldData = datetime.scrapeDateIsBefore('2020-3-12');
 
       if (getOldData) {
-        console.log('  🕰  Fetching old data for %s', process.env['SCRAPE_DATE']);
+        console.log('  🕰  Fetching old data for %s', process.env.SCRAPE_DATE);
       }
 
-      let urls = getOldData ? this._urlsOld : this._urls;
-      let cases = await fetch.csv(urls.cases, false);
-      let deaths = await fetch.csv(urls.deaths, false);
-      let recovered = await fetch.csv(urls.recovered, false);
+      const urls = getOldData ? this._urlsOld : this._urls;
+      const cases = await fetch.csv(urls.cases, false);
+      const deaths = await fetch.csv(urls.deaths, false);
+      const recovered = await fetch.csv(urls.recovered, false);
 
-      let countries = [];
+      const countries = [];
       let date = Object.keys(cases[0]).pop();
 
-      if (process.env['SCRAPE_DATE']) {
+      if (process.env.SCRAPE_DATE) {
         // Find old date
-        let customDate = datetime.getMDYY(new Date(process.env['SCRAPE_DATE']));
+        const customDate = datetime.getMDYY(new Date(process.env.SCRAPE_DATE));
         if (!cases[0][customDate]) {
           console.warn('  ⚠️  No data present for %s, output will be empty', customDate);
         }
         date = customDate;
       }
 
-      let countyTotals = {};
+      const countyTotals = {};
       for (let index = 0; index < cases.length; index++) {
-        let retain = false;
         if (getOldData) {
           // See if it's a county
-          let countyAndState = jhuUSCountyMap[cases[index]['Province/State']];
+          const countyAndState = jhuUSCountyMap[cases[index]['Province/State']];
           if (countyAndState) {
             if (countyTotals[countyAndState]) {
               // Add
               countyTotals[countyAndState].cases += parse.number(cases[index][date] || 0);
               countyTotals[countyAndState].deaths += parse.number(deaths[index][date] || 0);
               countyTotals[countyAndState].recovered += parse.number(recovered[index][date] || 0);
-            }
-            else {
-              let [county, state] = countyAndState.split(', ');
+            } else {
+              const [county, state] = countyAndState.split(', ');
               countyTotals[countyAndState] = {
-                county: county,
-                state: state,
+                county,
+                state,
                 country: 'USA',
                 cases: parse.number(cases[index][date] || 0),
                 recovered: parse.number(recovered[index][date] || 0),
                 deaths: parse.number(deaths[index][date] || 0),
-                coordinates: [parse.float(cases[index]['Long']), parse.float(cases[index]['Lat'])]
+                coordinates: [parse.float(cases[index].Long), parse.float(cases[index].Lat)]
               };
             }
           }
         }
 
         // These two incorrectly have a state set
-        if (
-          cases[index]['Province/State'] === 'United Kingdom' ||
-          cases[index]['Province/State'] === 'France'
-        ) {
+        if (cases[index]['Province/State'] === 'United Kingdom' || cases[index]['Province/State'] === 'France') {
           cases[index]['Province/State'] = '';
         }
 
         // Use their US states
         if (cases[index]['Country/Region'] === 'US' && transform.usStates[parse.string(cases[index]['Province/State'])]) {
-          let state = transform.usStates[parse.string(cases[index]['Province/State'])];
+          const state = transform.usStates[parse.string(cases[index]['Province/State'])];
           countries.push({
             country: 'USA',
-            state: state,
+            state,
             cases: parse.number(cases[index][date] || 0),
             recovered: parse.number(recovered[index][date] || 0),
             deaths: parse.number(deaths[index][date] || 0)
           });
-        }
-        else if (rules.isAcceptable(cases[index], this._accept, this._reject)) {
+        } else if (rules.isAcceptable(cases[index], this._accept, this._reject)) {
           countries.push({
             country: parse.string(cases[index]['Country/Region']),
             state: parse.string(cases[index]['Province/State']),
             cases: parse.number(cases[index][date] || 0),
             recovered: parse.number(recovered[index][date] || 0),
             deaths: parse.number(deaths[index][date] || 0),
-            coordinates: [parse.float(cases[index]['Long']), parse.float(cases[index]['Lat'])]
+            coordinates: [parse.float(cases[index].Long), parse.float(cases[index].Lat)]
           });
         }
       }
 
       // Add counties
-      for (let [countyName, countyData] of Object.entries(countyTotals)) {
+      for (const [, countyData] of Object.entries(countyTotals)) {
         countries.push(countyData);
       }
 
@@ -299,27 +300,25 @@ let scrapers = [
   {
     country: 'USA',
     url: 'https://www.cdc.gov/coronavirus/2019-ncov/map-data-cases.csv',
-    _getCaseNumber: function(string) {
+    _getCaseNumber(string) {
       if (typeof string === 'string') {
-        let matches;
+        const matches = string.match(/(\d+) of (\d+)/);
         if (string === 'None') {
           return 0;
         }
-        if ((matches = string.match(/(\d+) of (\d+)/))) {
+        if (matches) {
           // Return the high number
           return parse.number(matches[2]);
         }
-        else {
-          return parse.number(string);
-        }
+        return parse.number(string);
       }
       return string;
     },
-    _scraper: async function() {
-      let data = await fetch.csv(this.url);
+    async _scraper() {
+      const data = await fetch.csv(this.url);
 
-      let states = [];
-      for (let stateData of data) {
+      const states = [];
+      for (const stateData of data) {
         if (stateData.Name) {
           states.push({
             state: transform.toUSStateAbbreviation(parse.string(stateData.Name)),
@@ -335,16 +334,16 @@ let scrapers = [
     country: 'CHE',
     county: 'Zurich',
     url: 'https://raw.githubusercontent.com/openZH/covid_19/master/COVID19_Fallzahlen_Kanton_ZH_total.csv',
-    scraper: async function() {
-      let data = await fetch.csv(this.url, false);
+    timeseries: true,
+    async scraper() {
+      const data = await fetch.csv(this.url, false);
 
       let latestData;
-      if (process.env['SCRAPE_DATE']) {
+      if (process.env.SCRAPE_DATE) {
         // Find old date
-        let date = datetime.getDDMMYYYY(new Date(process.env['SCRAPE_DATE']), '.');
-        latestData = data.filter(dayData => dayData.Date === date)[0];
-      }
-      else {
+        const date = datetime.getDDMMYYYY(new Date(process.env.SCRAPE_DATE), '.');
+        [latestData] = data.filter(dayData => dayData.Date === date);
+      } else {
         latestData = data[data.length - 1];
       }
 
@@ -359,18 +358,15 @@ let scrapers = [
   {
     country: 'ITA',
     url: 'https://raw.githubusercontent.com/pcm-dpc/COVID-19/master/dati-regioni/dpc-covid19-ita-regioni.csv',
-    _regionMap: {
-      'P.A. Trento': 'Trento',
-      'Emilia Romagna': 'Emilia-Romagna',
-      'P.A. Bolzano': 'Trentino-South Tyrol',
-    },
-    scraper: async function() {
-      let data = await fetch.csv(this.url, false);
+    timeseries: true,
+    aggregate: 'state',
+    async scraper() {
+      const data = await fetch.csv(this.url, false);
 
       let latestDate = data[data.length - 1].data.substr(0, 10);
-      if (process.env['SCRAPE_DATE']) {
+      if (process.env.SCRAPE_DATE) {
         // Find old date
-        latestDate = datetime.getYYYYMMDD(new Date(process.env['SCRAPE_DATE']), '-');
+        latestDate = datetime.getYYYYMMDD(new Date(process.env.SCRAPE_DATE), '-');
       }
 
       // Get only records for that date
@@ -379,37 +375,57 @@ let scrapers = [
           return row.data.substr(0, 10) === latestDate;
         })
         .map(row => {
-          let regionName = parse.string(row.denominazione_regione);
-          regionName = this._regionMap[regionName] || regionName;
           return {
             recovered: parse.number(row.dimessi_guariti),
             deaths: parse.number(row.deceduti),
             cases: parse.number(row.totale_casi),
-            state: regionName
+            state: parse.string(row.denominazione_regione)
           };
         });
+    }
+  },
+  {
+    country: 'GBR',
+    url: 'https://www.arcgis.com/sharing/rest/content/items/b684319181f94875a6879bbc833ca3a6/data',
+    aggregate: 'county',
+    type: 'csv', // required since URL does not end in .csv
+    async scraper() {
+      const data = await fetch.csv(this.url);
+
+      const counties = [];
+      for (const utla of data) {
+        const name = parse.string(utla.GSS_NM);
+        counties.push({
+          county: name,
+          cases: parse.number(utla.TotalCases)
+        });
+      }
+
+      return counties;
     }
   },
   {
     state: 'MS',
     country: 'USA',
     url: 'https://msdh.ms.gov/msdhsite/_static/14,0,420.html',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    type: 'table',
+    aggregate: 'county',
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
       if (datetime.scrapeDateIsBefore('2020-3-15')) {
-        let $table = $('h3:contains("Mississippi Cases")')
+        const $table = $('h3:contains("Mississippi Cases")')
           .nextAll('table')
           .first();
 
-        let $trs = $table.find('tbody > tr');
+        const $trs = $table.find('tbody > tr');
 
-        let counties = {};
+        const counties = {};
 
         $trs.each((index, tr) => {
-          let $tr = $(tr);
-          let status = $tr.find('td:nth-child(3)').text();
-          let county = transform.addCounty(parse.string($tr.find('td:nth-child(2)').text()));
+          const $tr = $(tr);
+          const status = $tr.find('td:nth-child(3)').text();
+          const county = transform.addCounty(parse.string($tr.find('td:nth-child(2)').text()));
 
           // Make sure this matches once they have a confirmed case
           if (status === 'Confirmed' || status === 'Presumptive') {
@@ -418,27 +434,27 @@ let scrapers = [
           }
         });
 
-        let countiesArray = transform.objectToArray(counties);
+        const countiesArray = transform.objectToArray(counties);
 
         counties.push(transform.sumData(countiesArray));
 
         return countiesArray;
       }
 
-      let $table = $('h4:contains("All Mississippi cases to date")')
+      const $table = $('h4:contains("All Mississippi cases to date")')
         .nextAll('table')
         .first();
 
-      let $trs = $table.find('tbody > tr');
+      const $trs = $table.find('tbody > tr');
 
-      let counties = [];
+      const counties = [];
 
       $trs.each((index, tr) => {
-        let $tr = $(tr);
-        let county = transform.addCounty(parse.string($tr.find('td:first-child').text()));
+        const $tr = $(tr);
+        const county = transform.addCounty(parse.string($tr.find('td:first-child').text()));
 
         counties.push({
-          county: county,
+          county,
           cases: parse.number($tr.find('td:last-child').text())
         });
       });
@@ -452,8 +468,9 @@ let scrapers = [
     state: 'DC',
     country: 'USA',
     url: 'https://coronavirus.dc.gov/page/coronavirus-data',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    type: 'paragraph',
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
       let cases = 0;
       cases += parse.number(
@@ -470,7 +487,7 @@ let scrapers = [
       );
 
       return {
-        cases: cases,
+        cases,
         tested: parse.number(
           $('p:contains("Number of people tested overall")')
             .first()
@@ -484,21 +501,23 @@ let scrapers = [
     state: 'AL',
     country: 'USA',
     url: 'http://www.alabamapublichealth.gov/infectiousdiseases/2019-coronavirus.html',
-    scraper: async function() {
-      let counties = [];
-      let $ = await fetch.page(this.url);
+    type: 'table',
+    aggregate: 'county',
+    async scraper() {
+      const counties = [];
+      const $ = await fetch.page(this.url);
 
-      let $table = $('td:contains("(COVID-19) in Alabama")').closest('table');
+      const $table = $('td:contains("(COVID-19) in Alabama")').closest('table');
 
       // Ignore the last row "Out of town"
-      let $trs = $table.find('tbody > tr:not(:last-child)');
+      const $trs = $table.find('tbody > tr:not(:last-child)');
 
       $trs.each((index, tr) => {
         if (index < 2) {
           return;
         }
-        let $tr = $(tr);
-        let countyName = transform.addCounty(parse.string($tr.find('td:first-child').text()));
+        const $tr = $(tr);
+        const countyName = transform.addCounty(parse.string($tr.find('td:first-child').text()));
         if (countyName === 'Out of State County') {
           return;
         }
@@ -517,88 +536,111 @@ let scrapers = [
     state: 'CO',
     country: 'USA',
     url: 'https://docs.google.com/document/d/e/2PACX-1vRSxDeeJEaDxir0cCd9Sfji8ZPKzNaCPZnvRCbG63Oa1ztz4B4r7xG_wsoC9ucd_ei3--Pz7UD50yQD/pub',
-    scraper: async function() {
-      let counties = [];
-      let $ = await fetch.page(this.url);
+    type: 'list',
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
-      let $lis = $('p:contains("Positive cases by county of residence")')
-        .nextAll('ul')
-        .first()
-        .find('li');
+      if (datetime.scrapeDateIs('2020-3-16')) {
+        return {
+          cases: parse.number(
+            $('span:contains("Positive")')
+              .text()
+              .split(':')[1]
+          ),
+          tested: parse.number(
+            $('span:contains("Total number of people tested")')
+              .text()
+              .split(':')[1]
+          )
+        };
+      }
+      if (datetime.scrapeDateIsBefore('2020-3-16')) {
+        const counties = [];
 
-      $lis.each((index, li) => {
-        // This does not match "Out of state visitors"
-        let matches = $(li)
-          .text()
-          .match(/(.*?): (\d+)/);
-        if (matches) {
-          let county = transform.addCounty(parse.string(matches[1]));
-          if (county === 'Unknown county County') {
-            county = UNASSIGNED;
-          }
-          let data = {
-            county: county,
-            cases: parse.number(matches[2])
-          };
-          counties.push(data);
-        }
-      });
+        const $lis = $('p:contains("Positive cases by county of residence")')
+          .nextAll('ul')
+          .first()
+          .find('li');
 
-      let visitorCounties = [];
-      let $visitors = $('p:contains("Positive cases by county of residence")').nextAll('p').find('span');
-      $visitors.each((index, visitor) => {
-        let visitorInfo = $(visitor).text().match(/([A-Za-z]+) - (\d+)/);
-        if (visitorInfo !== null && visitorInfo.length === 3) {
-          let county = visitorInfo[1] + ' County';
-          let cases = visitorInfo[2];
-          if (county.indexOf('information') === -1) {
-            let data = {
-              county: transform.addCounty(parse.string(county)),
-              cases: parse.number(cases)
-            };
-            if (rules.isAcceptable(data, null, this._reject)) {
-              visitorCounties.push(data);
+        $lis.each((index, li) => {
+          // This does not match "Out of state visitors"
+          const matches = $(li)
+            .text()
+            .match(/(.*?): (\d+)/);
+          if (matches) {
+            let county = transform.addCounty(parse.string(matches[1]));
+            if (county === 'Unknown county County') {
+              county = UNASSIGNED;
             }
+            const data = {
+              county,
+              cases: parse.number(matches[2])
+            };
+            counties.push(data);
           }
-        }
-      });
-      counties.forEach(county => {
-        if(county['cases'] !== undefined && county['county'] !== undefined) {
-          visitorCounties.forEach(
-            visitorCounty => {
-              if(visitorCounty['cases'] !== undefined && visitorCounty['county'] !== undefined) {
-                if(visitorCounty['county'] === county['county']){
-                  county['cases'] = visitorCounty['cases'] + county['cases'];
-                }
+        });
+
+        const visitorCounties = [];
+        const $visitors = $('p:contains("Positive cases by county of residence")')
+          .nextAll('p')
+          .find('span');
+        $visitors.each((index, visitor) => {
+          const visitorInfo = $(visitor)
+            .text()
+            .match(/([A-Za-z]+) - (\d+)/);
+          if (visitorInfo !== null && visitorInfo.length === 3) {
+            const county = `${visitorInfo[1]} County`;
+            const cases = visitorInfo[2];
+            if (county.indexOf('information') === -1) {
+              const data = {
+                county: transform.addCounty(parse.string(county)),
+                cases: parse.number(cases)
+              };
+              if (rules.isAcceptable(data, null, this._reject)) {
+                visitorCounties.push(data);
               }
             }
-          )
-        }
-      });
-      counties.push(transform.sumData(counties));
+          }
+        });
+        counties.forEach(county => {
+          if (county.cases !== undefined && county.county !== undefined) {
+            visitorCounties.forEach(visitorCounty => {
+              if (visitorCounty.cases !== undefined && visitorCounty.county !== undefined) {
+                if (visitorCounty.county === county.county) {
+                  county.cases = visitorCounty.cases + county.cases;
+                }
+              }
+            });
+          }
+        });
+        counties.push(transform.sumData(counties));
 
-      return counties;
+        return counties;
+      }
+      throw new Error('Hey remember how Colorado is awful at reporting data? You gotta do manual work again today to get it');
     }
   },
   {
     state: 'OR',
     country: 'USA',
     url: 'https://www.oregon.gov/oha/PH/DISEASESCONDITIONS/DISEASESAZ/Pages/emerging-respiratory-infections.aspx',
-    scraper: async function() {
-      let counties = [];
-      let $ = await fetch.page(this.url);
+    type: 'table',
+    aggregate: 'county',
+    async scraper() {
+      const counties = [];
+      const $ = await fetch.page(this.url);
 
-      let $table = $('table[summary="Cases by County in Oregon for COVID-19"]');
+      const $table = $('table[summary="Cases by County in Oregon for COVID-19"]');
 
-      let $trs = $table.find('tbody > tr:not(:first-child):not(:last-child)');
+      const $trs = $table.find('tbody > tr:not(:first-child):not(:last-child)');
 
       $trs.each((index, tr) => {
-        let $tr = $(tr);
-        let county = transform.addCounty(parse.string($tr.find('td:first-child').text()));
-        let cases = parse.number($tr.find('td:nth-child(2)').text());
+        const $tr = $(tr);
+        const county = transform.addCounty(parse.string($tr.find('td:first-child').text()));
+        const cases = parse.number($tr.find('td:nth-child(2)').text());
         counties.push({
-          county: county,
-          cases: cases
+          county,
+          cases
         });
       });
 
@@ -613,51 +655,54 @@ let scrapers = [
     _countyMap: {
       'La Salle Parish': 'LaSalle Parish'
     },
-    scraper: async function() {
-      let counties = [];
+    aggregate: 'county',
+    async scraper() {
+      const counties = [];
       if (datetime.scrapeDateIsBefore('2020-3-14')) {
         this.url = 'http://ldh.la.gov/Coronavirus/';
+        this.type = 'table';
 
-        let $ = await fetch.page(this.url);
+        const $ = await fetch.page(this.url);
 
-        let $table = $('p:contains("Louisiana Cases")').nextAll('table');
+        const $table = $('p:contains("Louisiana Cases")').nextAll('table');
 
-        let $trs = $table.find('tbody > tr:not(:last-child)');
+        const $trs = $table.find('tbody > tr:not(:last-child)');
 
         $trs.each((index, tr) => {
           // First 3 rows are test data
           if (index < 3) {
             return;
           }
-          let $tr = $(tr);
-          let county = parse.string($tr.find(`td:nth-last-child(2)`).text()) + ' Parish';
+          const $tr = $(tr);
+          const county = `${parse.string($tr.find(`td:nth-last-child(2)`).text())} Parish`;
 
           // Skip bunk data
-          let $tds = $tr.find('td');
+          const $tds = $tr.find('td');
           if ($tds.get(0).length > 2 && !$tds.first().attr('rowspan')) {
             return;
           }
 
-          let cases = parse.number($tr.find('td:last-child').text());
+          const cases = parse.number($tr.find('td:last-child').text());
           counties.push({
             county: this._countyMap[county] || county,
-            cases: cases
+            cases
           });
         });
-      }
-      else {
+      } else {
         this.url = 'https://opendata.arcgis.com/datasets/cba425c2e5b8421c88827dc0ec8c663b_0.csv';
-        // Use the new map
-        let data = await fetch.csv(this.url);
+        this.type = 'csv';
 
-        for (let county of data) {
+        // Use the new map
+        const data = await fetch.csv(this.url);
+
+        for (const county of data) {
           if (county.PARISH === 'Out of State Resident') {
             continue;
           }
           if (county.PARISH === 'Parish Under Investigation') {
             continue;
           }
-          let countyName = parse.string(county.PARISH) + ' Parish';
+          const countyName = `${parse.string(county.PARISH)} Parish`;
           counties.push({
             county: this._countyMap[countyName] || countyName,
             cases: parse.number(county.Cases),
@@ -675,25 +720,29 @@ let scrapers = [
     state: 'IA',
     country: 'USA',
     url: 'https://idph.iowa.gov/emerging-health-issues/novel-coronavirus',
-    // Incapsula blocking request
-    scraper: async function() {
-      let counties = [];
-      let $ = await fetch.headless(this.url);
-      let $table = $('caption:contains("Reported Cases in Iowa by County")').closest('table');
+    type: 'table',
+    aggregate: 'county',
+    headless: true, // Incapsula blocking request
+    async scraper() {
+      const counties = [];
+      const $ = await fetch.headless(this.url);
+      const $table = $('caption:contains("Reported Cases in Iowa by County")').closest('table');
 
-      let $trs = $table.find('tbody > tr:not(:last-child)');
+      const $trs = $table.find('tbody > tr:not(:last-child)');
 
       $trs.each((index, tr) => {
-        let $tr = $(tr);
-        let county = transform.addCounty($tr
+        const $tr = $(tr);
+        const county = transform.addCounty(
+          $tr
             .find('td:first-child')
             .text()
-            .replace(/[\d]*/g, ''));
-        let cases = parse.number($tr.find('td:last-child').text());
-      
+            .replace(/[\d]*/g, '')
+        );
+        const cases = parse.number($tr.find('td:last-child').text());
+
         counties.push({
-          county: county,
-          cases: cases
+          county,
+          cases
         });
       });
 
@@ -706,25 +755,34 @@ let scrapers = [
     state: 'TX',
     country: 'USA',
     url: 'https://www.dshs.state.tx.us/news/updates.shtm',
-    // Error: unable to verify the first certificate
-    scraper: async function() {
-      let counties = [];
-      let $ = await fetch.page(this.url);
+    type: 'table',
+    aggregate: 'county',
+    ssl: false, // Error: unable to verify the first certificate
+    async scraper() {
+      const counties = [];
+      const $ = await fetch.page(this.url);
 
-      let $table = $('table[summary="Texas COVID-19 Cases"]');
+      let $table;
+      if (datetime.scrapeDateIsBefore('2020-3-16')) {
+        $table = $('table[summary="Texas COVID-19 Cases"]');
+      } else {
+        $table = $('table[summary="COVID-19 Cases in Texas Counties"]');
+      }
 
-      let $trs = $table.find('tbody > tr:not(:last-child)');
+      const $trs = $table.find('tbody > tr:not(:last-child)');
 
       $trs.each((index, tr) => {
-        let $tr = $(tr);
-        let county = transform.addCounty($tr
+        const $tr = $(tr);
+        const county = transform.addCounty(
+          $tr
             .find('td:first-child')
             .text()
-            .replace(/[\d]*/g, ''));
-        let cases = parse.number($tr.find('td:last-child').text());
+            .replace(/[\d]*/g, '')
+        );
+        const cases = parse.number($tr.find('td:last-child').text());
         counties.push({
-          county: county,
-          cases: cases
+          county,
+          cases
         });
       });
 
@@ -736,24 +794,47 @@ let scrapers = [
   {
     state: 'DE',
     country: 'USA',
-    url: 'https://www.dhss.delaware.gov/dhss/dph/epi/2019novelcoronavirus.html',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    aggregate: 'county',
+    async scraper() {
+      if (datetime.scrapeDateIsBefore('2020-3-16')) {
+        this.url = 'https://www.dhss.delaware.gov/dhss/dph/epi/2019novelcoronavirus.html';
+        this.type = 'table';
+        const $ = await fetch.page(this.url);
 
-      let $td = $('*:contains("County breakdown")')
-        .closest('tr')
-        .find('td:last-child');
+        const $td = $('*:contains("County breakdown")')
+          .closest('tr')
+          .find('td:last-child');
 
-      let counties = $td
-        .html()
-        .split('<br>')
-        .map(str => {
-          let parts = str.split(': ');
-          return {
-            county: transform.addCounty(parse.string(parts[0])),
-            cases: parse.number(parts[1])
-          };
+        const counties = $td
+          .html()
+          .split('<br>')
+          .map(str => {
+            const parts = str.split(': ');
+            return {
+              county: transform.addCounty(parse.string(parts[0])),
+              cases: parse.number(parts[1])
+            };
+          });
+
+        counties.push(transform.sumData(counties));
+
+        return counties;
+      }
+      this.url = 'http://opendata.arcgis.com/datasets/c8d4efa2a6bd48a1a7ae074a8166c6fa_0.csv';
+      this.type = 'csv';
+      const data = await fetch.csv(this.url);
+
+      // This CSV is probably going to change once they have confirmed data
+      const counties = [];
+      for (const county of data) {
+        counties.push({
+          county: parse.string(county.NAME),
+          cases: parse.number(county.Presumptive_Positive),
+          recovered: parse.number(county.Recovered)
         });
+      }
+
+      counties.push(transform.sumData(counties));
 
       return counties;
     }
@@ -761,60 +842,80 @@ let scrapers = [
   {
     state: 'FL',
     country: 'USA',
-    url: 'http://www.floridahealth.gov/diseases-and-conditions/COVID-19/index.html',
-    _priority: 1,
-    scraper: async function() {
-      let counties = {};
-      let $ = await fetch.page(this.url);
+    priority: 1,
+    aggregate: 'county',
+    async scraper() {
+      if (datetime.scrapeDateIsBefore('2020-3-16')) {
+        this.type = 'table';
+        this.url = 'http://www.floridahealth.gov/diseases-and-conditions/COVID-19/index.html';
+        const counties = {};
+        const $ = await fetch.page(this.url);
 
-      let $table = $('*:contains("Diagnosed in Florida")').closest('table');
+        const $table = $('*:contains("Diagnosed in Florida")').closest('table');
 
-      let $trs = $table.find('tr');
+        const $trs = $table.find('tr');
 
-      $trs.each((index, tr) => {
-        if (index < 2) {
-          return;
+        $trs.each((index, tr) => {
+          if (index < 2) {
+            return;
+          }
+          const $tr = $(tr);
+          const county = transform.addCounty(parse.string($tr.find('td:nth-child(2)').text()));
+          counties[county] = counties[county] || { cases: 0 };
+          counties[county].cases += 1;
+        });
+
+        const countiesArray = transform.objectToArray(counties);
+
+        // Add non florida as unassigned
+        const text = $('div:contains("Non-Florida Residents")')
+          .last()
+          .text();
+        const nonFlorida = text.split(' – ')[0];
+        if (nonFlorida) {
+          countiesArray.push({ name: UNASSIGNED, cases: nonFlorida });
         }
-        let $tr = $(tr);
-        let county = transform.addCounty(parse.string($tr.find('td:nth-child(2)').text()));
-        counties[county] = counties[county] || { cases: 0 };
-        counties[county].cases += 1;
-      });
 
+        countiesArray.push(transform.sumData(countiesArray));
 
-      let countiesArray = transform.objectToArray(counties);
+        return countiesArray;
+      }
+      this.type = 'csv';
+      this.url = 'https://opendata.arcgis.com/datasets/b4930af3f43a48138c70bca409b5c452_0.csv';
+      const data = await fetch.csv(this.url);
 
-      // Add non florida as unassigned
-      let text = $('div:contains("Non-Florida Residents")').last().text();
-      let nonFlorida = text.split(' – ')[0];
-      if (nonFlorida) {
-        countiesArray.push({ name: UNASSIGNED, cases: nonFlorida });
+      const counties = [];
+      for (const county of data) {
+        counties.push({
+          county: parse.string(county.County),
+          cases: parse.number(county.Counts)
+        });
       }
 
-      countiesArray.push(transform.sumData(countiesArray));
-
-      return countiesArray;
+      return counties;
     }
   },
   {
     state: 'NY',
     country: 'USA',
     url: 'https://www.health.ny.gov/diseases/communicable/coronavirus/',
+    type: 'table',
+    aggregate: 'county',
     _countyMap: {
       // This is totally wrong, but otherwise we need less granular GeoJSON
       'New York City': 'New York County',
-      'Broom': 'Broome'
+      Broom: 'Broome'
     },
-    scraper: async function() {
-      let counties = [];
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const counties = [];
+      const $ = await fetch.page(this.url);
 
-      let $table = $('#case_count_table');
+      const $table = $('#case_count_table');
 
-      let $trs = $table.find('tr:not(.total_row):not(:first-child)');
+      const $trs = $table.find('tr:not(.total_row):not(:first-child)');
 
       $trs.each((index, tr) => {
-        let $tr = $(tr);
+        const $tr = $(tr);
         let countyName = parse.string($tr.find('td:first-child').text()).replace(':', '');
         countyName = this._countyMap[countyName] || countyName;
         counties.push({
@@ -832,18 +933,21 @@ let scrapers = [
     state: 'WA',
     country: 'USA',
     url: 'https://www.doh.wa.gov/Emergencies/Coronavirus',
-    scraper: async function() {
-      let counties = [];
-      let $ = await fetch.headless(this.url);
+    type: 'table',
+    headless: true,
+    aggregate: 'county',
+    async scraper() {
+      const counties = [];
+      const $ = await fetch.headless(this.url);
 
-      let $th = $('th:contains("(COVID-19) in Washington")');
-      let $table = $th.closest('table');
-      let $trs = $table.find('tbody > tr');
+      const $th = $('th:contains("(COVID-19) in Washington")');
+      const $table = $th.closest('table');
+      const $trs = $table.find('tbody > tr');
 
       $trs.each((index, tr) => {
-        let $tr = $(tr);
-        let cases = parse.number($tr.find('> *:nth-child(2)').text());
-        let deaths = parse.number($tr.find('> *:last-child').text());
+        const $tr = $(tr);
+        const cases = parse.number($tr.find('> *:nth-child(2)').text());
+        const deaths = parse.number($tr.find('> *:last-child').text());
         let county = transform.addCounty(parse.string($tr.find('> *:first-child').text()));
         if (county === 'Unassigned County') {
           county = UNASSIGNED;
@@ -852,9 +956,9 @@ let scrapers = [
           return;
         }
         counties.push({
-          county: county,
-          cases: cases,
-          deaths: deaths
+          county,
+          cases,
+          deaths
         });
       });
 
@@ -869,25 +973,26 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://www.sfdph.org/dph/alerts/coronavirus.asp',
-    scraper: async function() {
-      let deaths, cases;
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      let deaths;
+      let cases;
+      const $ = await fetch.page(this.url);
 
-      let $h2 = $('h2:contains("Cases in San Francisco")');
+      const $h2 = $('h2:contains("Cases in San Francisco")');
 
       {
-        let $p = $h2.nextAll('*:contains("Cases:")');
+        const $p = $h2.nextAll('*:contains("Cases:")');
         cases = parse.number($p.text());
       }
 
       {
-        let $p = $h2.nextAll('*:contains("Deaths:")');
+        const $p = $h2.nextAll('*:contains("Deaths:")');
         deaths = parse.number($p.text());
       }
 
       return {
-        cases: cases,
-        deaths: deaths
+        cases,
+        deaths
       };
     }
   },
@@ -896,28 +1001,29 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://www.smchealth.org/coronavirus',
-    scraper: async function() {
-      let deaths, cases;
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      let deaths;
+      let cases;
+      const $ = await fetch.page(this.url);
 
-      let $th = $('th:contains("COVID-19 Case Count")');
-      let $table = $th.closest('table');
+      const $th = $('th:contains("COVID-19 Case Count")');
+      const $table = $th.closest('table');
 
       {
-        let $tr = $table.find('*:contains("Positive")').closest('tr');
-        let $dataTd = $tr.find('td:last-child');
+        const $tr = $table.find('*:contains("Positive")').closest('tr');
+        const $dataTd = $tr.find('td:last-child');
         cases = parse.number($dataTd.text());
       }
 
       {
-        let $tr = $table.find('*:contains("Deaths")').closest('tr');
-        let $dataTd = $tr.find('td:last-child');
+        const $tr = $table.find('*:contains("Deaths")').closest('tr');
+        const $dataTd = $tr.find('td:last-child');
         deaths = parse.number($dataTd.text());
       }
 
       return {
-        cases: cases,
-        deaths: deaths
+        cases,
+        deaths
       };
     }
   },
@@ -927,11 +1033,10 @@ let scrapers = [
     country: 'USA',
     // Error "Please enable JavaScript to view the page content."
     url: 'http://www.acphd.org/2019-ncov.aspx',
-    scraper: async function() {
-      let cases;
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
-      let $table = $('.sccgov-responsive-table');
+      const $table = $('.sccgov-responsive-table');
 
       return {
         deaths: parse.number(
@@ -958,18 +1063,17 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://socoemergency.org/emergency/novel-coronavirus/novel-coronavirus-in-sonoma-county/',
-    scraper: async function() {
-      let cases;
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
-      let $th = $('th:contains("Total in Sonoma County")');
-      let $table = $th.closest('table');
+      const $th = $('th:contains("Total in Sonoma County")');
+      const $table = $th.closest('table');
 
-      let $td = $table.find('td:last-child');
-      cases = parse.number($td.text());
+      const $td = $table.find('td:last-child');
+      const cases = parse.number($td.text());
 
       return {
-        cases: cases
+        cases
       };
     }
   },
@@ -978,16 +1082,15 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'http://www.santacruzhealth.org/HSAHome/HSADivisions/PublicHealth/CommunicableDiseaseControl/Coronavirus.aspx',
-    scraper: async function() {
-      let cases;
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
-      let $h2 = $('p:contains("Total Confirmed Cases")').nextAll('h2');
+      const $h2 = $('p:contains("Total Confirmed Cases")').nextAll('h2');
 
-      cases = parse.number($h2.text());
+      const cases = parse.number($h2.text());
 
       return {
-        cases: cases
+        cases
       };
     }
   },
@@ -997,22 +1100,22 @@ let scrapers = [
     country: 'USA',
     url: 'https://www.sccgov.org/sites/phd/DiseaseInformation/novel-coronavirus/Pages/home.aspx',
 
-    scraper: async function() {
+    async scraper() {
       // Santa Clara County uses JavaScript to parse JSON data into an HTML table. We cannot read
       // this table directly without the DOM so we regex parse the JSON data.
 
-      let $ = await fetch.page(this.url);
-      let scriptData = $('script:contains("Total_Confirmed_Cases")')[0].children[0].data;
+      const $ = await fetch.page(this.url);
+      const scriptData = $('script:contains("Total_Confirmed_Cases")')[0].children[0].data;
 
-      let regExp = /\[.*\]/;
-      let data = JSON.parse(regExp.exec(scriptData))[0];
+      const regExp = /\[.*\]/;
+      const data = JSON.parse(regExp.exec(scriptData))[0];
 
-      let cases = parse.number(data['Total_Confirmed_Cases']);
-      let deaths = parse.number(data['Deaths']);
+      const cases = parse.number(data.Total_Confirmed_Cases);
+      const deaths = parse.number(data.Deaths);
 
       return {
-        cases: cases,
-        deaths: deaths
+        cases,
+        deaths
       };
     }
   },
@@ -1021,12 +1124,12 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'http://www.solanocounty.com/depts/ph/coronavirus.asp',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
-      let $el = $('*:contains("Number of Positive Cases")').first();
+      const $el = $('*:contains("Number of Positive Cases")').first();
 
-      let matches = $el.text().match(/Number of Positive Cases in Solano County: (\d)/);
+      const matches = $el.text().match(/Number of Positive Cases in Solano County: (\d)/);
 
       return {
         cases: parse.number(matches[1])
@@ -1038,17 +1141,16 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://www.coronavirus.cchealth.org/',
-    scraper: async function() {
-      let cases, deaths;
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.headless(this.url);
 
-      cases = parse.number(
+      const cases = parse.number(
         $('h1:contains("TOTAL")')
           .parent()
           .next()
           .text()
       );
-      deaths = parse.number(
+      const deaths = parse.number(
         $('h1:contains("DEATHS")')
           .parent()
           .prev()
@@ -1056,8 +1158,8 @@ let scrapers = [
       );
 
       return {
-        cases: cases,
-        deaths: deaths
+        cases,
+        deaths
       };
     }
   },
@@ -1066,8 +1168,8 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'http://www.schsa.org/PublicHealth/pages/corona-virus/',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
       return {
         cases: parse.number($('.counter').text())
@@ -1079,13 +1181,13 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://www.yolocounty.org/health-human-services/adults/communicable-disease-investigation-and-control/novel-coronavirus-2019',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
       // this is brittle as all hell
-      let $h3 = $('h3:contains("confirmed case")');
+      const $h3 = $('h3:contains("confirmed case")');
 
-      let matches = $h3.text().match(/there are (\d+) confirmed cases? in Yolo/);
+      const matches = $h3.text().match(/there are (\d+) confirmed cases? in Yolo/);
       return {
         cases: parse.number(matches[1])
       };
@@ -1096,11 +1198,11 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://www.saccounty.net/COVID-19/Pages/default.aspx',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
-      let $table = $('th:contains("Confirmed")').closest('table');
-      let $tds = $table.find('tr:last-child > td');
+      const $table = $('th:contains("Confirmed")').closest('table');
+      const $tds = $table.find('tr:last-child > td');
       return {
         cases: parse.number($tds.first().text()),
         deaths: parse.number($tds.last().text())
@@ -1112,8 +1214,8 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://www.co.fresno.ca.us/departments/public-health/covid-19',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
       return {
         cases: parse.number($('li:contains("Total cases")').text()),
@@ -1126,12 +1228,12 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://www.maderacounty.com/government/public-health/health-updates/corona-virus',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
-      let $el = $('*:contains("Confirmed cases")').first();
+      const $el = $('*:contains("Confirmed cases")').first();
 
-      let matches = $el.text().match(/Confirmed cases:.*?(\d)/);
+      const matches = $el.text().match(/Confirmed cases:.*?(\d)/);
 
       return {
         cases: parse.number(matches[1])
@@ -1143,10 +1245,10 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://www.placer.ca.gov/6448/Cases-in-Placer',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
-      let $table = $('p:contains("Confirmed COVID-19 Cases in Placer County")')
+      const $table = $('p:contains("Confirmed COVID-19 Cases in Placer County")')
         .nextAll('table')
         .first();
       return {
@@ -1172,12 +1274,12 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://www.co.shasta.ca.us/index/hhsa/health-safety/current-heath-concerns/coronavirus',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
-      let $el = $('h3:contains("Positive cases:")').first();
+      const $el = $('h3:contains("Positive cases:")').first();
 
-      let matches = $el.text().match(/Positive cases:.*?(\d)/);
+      const matches = $el.text().match(/Positive cases:.*?(\d)/);
 
       return {
         cases: parse.number(matches[1])
@@ -1189,8 +1291,8 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'http://www.publichealth.lacounty.gov/media/Coronavirus/',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
       return {
         cases: parse.number(
@@ -1211,15 +1313,17 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'http://wp.sbcounty.gov/dph/coronavirus/',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
-      let cases = parse.number($('h3:contains("COVID-19 CASES")')
-                    .parent()
-                    .attr('data-number-value'));
+      const cases = parse.number(
+        $('h3:contains("COVID-19 CASES")')
+          .parent()
+          .attr('data-number-value')
+      );
 
       return {
-        cases: cases
+        cases
       };
     }
   },
@@ -1228,14 +1332,16 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'http://www.sjcphs.org/coronavirus.aspx#res',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
-      let h3 = $('h6:contains("confirmed cases of COVID-19")').first().text();
-      let cases = parse.number(h3.match(/\((\d+)\)/)[1]);
+      const h3 = $('h6:contains("confirmed cases of COVID-19")')
+        .first()
+        .text();
+      const cases = parse.number(h3.match(/\((\d+)\)/)[1]);
 
       return {
-        cases: cases
+        cases
       };
     }
   },
@@ -1244,21 +1350,36 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://www.co.merced.ca.us/3350/Coronavirus-Disease-2019',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
-      let $table = $('h3:contains("Merced County COVID-19 Statistics")')
-                        .parent()
-                        .next('table');
+      const $table = $('h3:contains("Merced County COVID-19 Statistics")')
+        .parent()
+        .next('table');
 
-      let cases = parse.number($table.find('td:contains("Cases")').next('td').text());
-      let deaths = parse.number($table.find('td:contains("Deaths")').next('td').text());
-      let recovered = parse.number($table.find('td:contains("Recoveries")').next('td').text());
+      const cases = parse.number(
+        $table
+          .find('td:contains("Cases")')
+          .next('td')
+          .text()
+      );
+      const deaths = parse.number(
+        $table
+          .find('td:contains("Deaths")')
+          .next('td')
+          .text()
+      );
+      const recovered = parse.number(
+        $table
+          .find('td:contains("Recoveries")')
+          .next('td')
+          .text()
+      );
 
       return {
-        cases: cases,
-        deaths: deaths,
-        recovered: recovered
+        cases,
+        deaths,
+        recovered
       };
     }
   },
@@ -1267,17 +1388,17 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://coronavirus.marinhhs.org/surveillance',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
       // This may be hacky but hopefully they keep the same formatting. We may need
       // to convert this to a table one available.
-      let text = $('td:contains("confirmed cases of COVID-19")').text();
+      const text = $('td:contains("confirmed cases of COVID-19")').text();
 
-      let cases = parse.number(text.match(/there have been (\d+) confirmed cases of/)[1]);
+      const cases = parse.number(text.match(/there have been (\d+) confirmed cases of/)[1]);
 
       return {
-        cases: cases
+        cases
       };
     }
   },
@@ -1286,17 +1407,131 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://www.buttecounty.net/publichealth',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
       // This may be hacky but hopefully they keep the same formatting. We may need
       // to convert this to a table one available.
-      let cases = parse.number($('td:contains("Positive COVID-19 Tests")')
-                    .next()
-                    .text());
+      const cases = parse.number(
+        $('td:contains("Positive COVID-19 Tests")')
+          .next()
+          .text()
+      );
 
       return {
-        cases: cases
+        cases
+      };
+    }
+  },
+  {
+    county: 'Calaveras County',
+    state: 'CA',
+    country: 'USA',
+    url: 'https://covid19.calaverasgov.us/',
+    async scraper() {
+      const $ = await fetch.page(this.url);
+
+      const cases = parse.number(
+        $('h2:contains("in Calaveras County:")')
+          .first()
+          .text()
+          .match(/in Calaveras County: (\d+)/)[1]
+      );
+
+      return {
+        cases
+      };
+    }
+  },
+  {
+    county: 'Colusa County',
+    state: 'CA',
+    country: 'USA',
+    url: 'http://www.countyofcolusa.org/99/Public-Health',
+    async scraper() {
+      const $ = await fetch.page(this.url);
+
+      const cases = parse.number(
+        $('strong:contains("Confirmed Cases:")')
+          .first()
+          .text()
+          .match(/Confirmed Cases: (\d+)/)[1]
+      );
+
+      return {
+        cases
+      };
+    }
+  },
+  {
+    county: 'Del Norte County',
+    state: 'CA',
+    country: 'USA',
+    url: 'http://www.co.del-norte.ca.us/departments/health-human-services/public-health',
+    async scraper() {
+      const $ = await fetch.page(this.url);
+
+      const cases = parse.number(
+        $('font:contains("Number of Confirmed Cases")')
+          .first()
+          .text()
+          .match(/(\d+)/)[1]
+      );
+
+      const pui = parse.number(
+        $('font:contains("Number of Persons Under Investigation")')
+          .first()
+          .text()
+          .match(/(\d+)/)[1]
+      );
+
+      const pending = parse.number(
+        $('font:contains("Number of Specimens with Results Pending")')
+          .first()
+          .text()
+          .match(/(\d+)/)[1]
+      );
+
+      const negative = parse.number(
+        $('font:contains("Number of Negative Tests")')
+          .first()
+          .text()
+          .match(/(\d+)/)[1]
+      );
+
+      const tested = pui + pending + negative;
+
+      return {
+        cases,
+        tested
+      };
+    }
+  },
+  {
+    county: 'Glenn County',
+    state: 'CA',
+    country: 'USA',
+    async scraper() {
+      if (datetime.scrapeDateIsBefore('2020-3-16')) {
+        this.url = 'https://www.countyofglenn.net/dept/health-human-services/public-health/welcome';
+      } else {
+        this.url = 'https://www.countyofglenn.net/dept/health-human-services/public-health/covid-19';
+      }
+
+      const $ = await fetch.page(this.url);
+
+      // Resource contains multiple updates shown chronologically however it is unclear now that
+      // they will follow any reliable pattern. This captures the first one as the latest
+
+      const cases = parse.number(
+        $('font:contains("Glenn County COVID-19 Cases")')
+          .first()
+          .text()
+          .match(/Cases: (\d+)/)[1]
+      );
+
+      return {
+        cases
       };
     }
   },
@@ -1305,16 +1540,17 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://www.countyofkings.com/departments/health-welfare/public-health/coronavirus-disease-2019-covid-19/-fsiteid-1',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
-      let cases = parse.number($('h3:contains("Confirmed Cases")')
-                    .text()
-                    .match(/Confirmed Cases: (\d+)/)[1]
-                    );
+      const cases = parse.number(
+        $('h3:contains("Confirmed Cases")')
+          .text()
+          .match(/Confirmed Cases: (\d+)/)[1]
+      );
 
       return {
-        cases: cases
+        cases
       };
     }
   },
@@ -1323,16 +1559,17 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://www.mendocinocounty.org/community/novel-coronavirus',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
-      let cases = parse.number($('strong:contains("current cases of COVID-19")')
-                    .text()
-                    .match(/There are (\d+) current cases of/)[1]
-                    );
+      const cases = parse.number(
+        $('strong:contains("current cases of COVID-19")')
+          .text()
+          .match(/There are (\d+) current cases of/)[1]
+      );
 
       return {
-        cases: cases
+        cases
       };
     }
   },
@@ -1341,8 +1578,8 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'http://www.ochealthinfo.com/phs/about/epidasmt/epi/dip/prevention/novel_coronavirus',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
       return {
         cases: parse.number(
@@ -1363,15 +1600,36 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://www.rivcoph.org/coronavirus',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
-      let $el = $('p:contains("Confirmed cases:")').first();
+      const $el = $('p:contains("Confirmed cases:")').first();
 
-      let matches = $el.text().match(/Confirmed cases:.*?(\d)/);
+      const matches = $el.text().match(/Confirmed cases:.*?(\d)/);
 
       return {
         cases: parse.number(matches[1])
+      };
+    }
+  },
+  {
+    county: 'Mono County',
+    state: 'CA',
+    country: 'USA',
+    url: 'https://monocovid19-monomammoth.hub.arcgis.com/',
+    async scraper() {
+      const $ = await fetch.headless(this.url);
+
+      const cases = parse.number(
+        $('h4:contains("POSITIVE")')
+          .first()
+          .parent()
+          .next('h3')
+          .text()
+      );
+
+      return {
+        cases
       };
     }
   },
@@ -1380,8 +1638,8 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://www.sandiegocounty.gov/content/sdc/hhsa/programs/phs/community_epidemiology/dc/2019-nCoV/status.html',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
       let cases = 0;
       $('td:contains("Positive (confirmed cases)")')
@@ -1397,7 +1655,7 @@ let scrapers = [
         });
 
       return {
-        cases: cases,
+        cases,
         tested: parse.number(
           $('td:contains("Total Tested")')
             .next('td')
@@ -1411,34 +1669,60 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://www.ventura.org/covid19/',
-    // Needs JavaScript to populate counts
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    type: 'paragraph', // It's not a real table, it gets a low score
+    async scraper() {
+      const $ = await fetch.headless(this.url);
 
       let cases = 0;
-      cases += parse.number(
-        $('.count-subject:contains("Positive travel-related case")')
-          .closest('.hb-counter')
-          .find('.count-number')
-          .attr('data-from')
-      );
-      cases += parse.number(
-        $('.count-subject:contains("Presumptive Positive")')
-          .closest('.hb-counter')
-          .find('.count-number')
-          .attr('data-from')
-      );
+      let tested = 0;
 
-      let tested = parse.number(
-        $('.count-subject:contains("People tested")')
-          .closest('.hb-counter')
-          .find('.count-number')
-          .attr('data-from')
-      );
+      if (datetime.scrapeDateIsBefore('2020-3-16')) {
+        cases += parse.number(
+          $('.count-subject:contains("Positive travel-related case")')
+            .closest('.hb-counter')
+            .find('.count-number')
+            .attr('data-from')
+        );
+        cases += parse.number(
+          $('.count-subject:contains("Presumptive Positive")')
+            .closest('.hb-counter')
+            .find('.count-number')
+            .attr('data-from')
+        );
+        tested = parse.number(
+          $('.count-subject:contains("People tested")')
+            .closest('.hb-counter')
+            .find('.count-number')
+            .attr('data-from')
+        );
+      } else {
+        cases += parse.number(
+          $('td:contains("Positive cases")')
+            .closest('table')
+            .find('td')
+            .first()
+            .text()
+        );
+        cases += parse.number(
+          $('td:contains("Presumptive positive")')
+            .closest('table')
+            .find('td')
+            .first()
+            .text()
+        );
+
+        tested = parse.number(
+          $('td:contains("People tested")')
+            .closest('table')
+            .find('td')
+            .first()
+            .text()
+        );
+      }
 
       return {
-        cases: cases,
-        tested: tested
+        cases,
+        tested
       };
     }
   },
@@ -1446,34 +1730,81 @@ let scrapers = [
     state: 'WI',
     country: 'USA',
     url: 'https://www.dhs.wisconsin.gov/outbreaks/index.htm',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
-      let counties = [];
-      let $table = $('caption:contains("Number of Positive Results by County")').closest('table');
-      let $trs = $table.find('tbody > tr:not(:last-child)');
-      $trs.each((index, tr) => {
-        let $tr = $(tr);
-        counties.push({
-          county: transform.addCounty(parse.string($tr.find('td:first-child').text())),
-          cases: parse.number($tr.find('td:last-child').text())
+    type: 'table',
+    aggregate: 'county',
+    async scraper() {
+      const regions = [];
+      const $ = await fetch.page(this.url);
+
+      if (datetime.scrapeDateIsBefore('2020-3-16')) {
+        const $table = $('caption:contains("Number of Positive Results by County")').closest('table');
+        const $trs = $table.find('tbody > tr:not(:last-child)');
+        $trs.each((index, tr) => {
+          const $tr = $(tr);
+          regions.push({
+            county: transform.addCounty(parse.string($tr.find('td:first-child').text())),
+            cases: parse.number($tr.find('td:last-child').text())
+          });
         });
-      });
-      return counties;
+
+        regions.push(transform.sumData(regions));
+      } else {
+        const $table = $('h5:contains("Number of Positive Results by County")')
+          .nextAll('table')
+          .first();
+        const $trs = $table.find('tbody > tr:not(:last-child)');
+        $trs.each((index, tr) => {
+          const $tr = $(tr);
+          regions.push({
+            county: transform.addCounty(parse.string($tr.find('td:first-child').text())),
+            cases: parse.number($tr.find('td:last-child').text())
+          });
+        });
+
+        {
+          // Get state data from other table
+          const stateData = {
+            tested: 0
+          };
+
+          const $table = $('h5:contains("Wisconsin COVID-19 Test Results")')
+            .nextAll('table')
+            .first();
+          const $trs = $table.find('tbody > tr');
+          $trs.each((index, tr) => {
+            const $tr = $(tr);
+            const label = parse.string($tr.find('td:first-child').text());
+            const value = parse.number($tr.find('td:last-child').text());
+            if (label === 'Positive') {
+              stateData.cases = value;
+              stateData.tested += value;
+            } else if (label === 'Negative') {
+              stateData.tested += value;
+            }
+          });
+
+          regions.push(stateData);
+        }
+      }
+
+      return regions;
     }
   },
   {
     state: 'SD',
     country: 'USA',
     url: 'https://doh.sd.gov/news/Coronavirus.aspx#SD',
-    scraper: async function() {
-      let counties = [];
-      let $ = await fetch.page(this.url);
-      let $th = $('h2:contains("South Dakota Counties with COVID-19 Cases")');
-      let $table = $th.next('table');
-      let $trs = $table.find('tbody > tr');
+    type: 'table',
+    aggregate: 'county',
+    async scraper() {
+      const counties = [];
+      const $ = await fetch.page(this.url);
+      const $th = $('h2:contains("South Dakota Counties with COVID-19 Cases")');
+      const $table = $th.next('table');
+      const $trs = $table.find('tbody > tr');
 
       $trs.each((index, tr) => {
-        let $tr = $(tr);
+        const $tr = $(tr);
         counties.push({
           county: transform.addCounty(parse.string($tr.find('> *:first-child').text())),
           cases: parse.number($tr.find('> *:last-child').text())
@@ -1486,63 +1817,88 @@ let scrapers = [
     state: 'UT',
     country: 'USA',
     url: 'https://coronavirus.utah.gov/latest/',
-    scraper: async function () {
-      let $ = await fetch.page(this.url);
-      let counties = [];
-      let $table = $('th:contains("District")').closest('table');
-      let $trs = $table.find('tbody > tr');
+    type: 'table',
+    aggregate: 'county',
+    async scraper() {
+      const $ = await fetch.page(this.url);
+      const counties = [];
+      const $table = $('th:contains("District")').closest('table');
+      const $trs = $table.find('tbody > tr');
       $trs.each((index, tr) => {
-        let $tr = $(tr);
-        let county = parse.string($tr.find('td:first-child').text());
-        let cases = parse.number($tr.find('td:last-child').text());
+        const $tr = $(tr);
+        const county = parse.string($tr.find('td:first-child').text());
+        const cases = parse.number($tr.find('td:last-child').text());
         if (index > 0 && county.indexOf('Non-Utah') === -1) {
           counties.push({
             county: transform.addCounty(county),
-            cases,
+            cases
           });
         }
       });
-      return counties
+      return counties;
     }
   },
   {
     state: 'PA',
     country: 'USA',
     url: 'https://www.health.pa.gov/topics/disease/Pages/Coronavirus.aspx',
-    scraper: async function () {
-      let counties = [];
-      let $ = await fetch.page(this.url);
-      let $lis = $('li:contains("Counties impacted to date include")').nextAll('ul').first().find('li');
-      $lis.each((index, li) => {
-        let matches = $(li).text().match(/([A-Za-z]+) \((\d+\))/);
-        if (matches) {
-          let county = transform.addCounty(parse.string(matches[1]));
-          let cases = parse.number(matches[2]);
-          counties.push({
-            county,
-            cases,
-          });
-        }
-      });
-      return counties
+    type: 'list',
+    aggregate: 'county',
+    async scraper() {
+      const counties = [];
+      const $ = await fetch.page(this.url);
+      if (datetime.scrapeDateIsBefore('2020-3-16')) {
+        const $lis = $('li:contains("Counties impacted to date include")')
+          .nextAll('ul')
+          .first()
+          .find('li');
+        $lis.each((index, li) => {
+          const matches = $(li)
+            .text()
+            .match(/([A-Za-z]+) \((\d+\))/);
+          if (matches) {
+            const county = transform.addCounty(parse.string(matches[1]));
+            const cases = parse.number(matches[2]);
+            counties.push({
+              county,
+              cases
+            });
+          }
+        });
+      } else {
+        const $table = $('table.ms-rteTable-default').first();
+        const $trs = $table.find('tbody > tr');
+
+        $trs.each((index, tr) => {
+          const $tr = $(tr);
+          const data = {
+            county: parse.string($tr.find('td:first-child').text()),
+            cases: parse.number($tr.find('td:last-child').text())
+          };
+          counties.push(data);
+        });
+      }
+      return counties;
     }
   },
   {
     state: 'TN',
     country: 'USA',
     url: 'https://www.tn.gov/health/cedep/ncov.html',
-    scraper: async function() {
-      let counties = [];
-      let $ = await fetch.page(this.url);
-      let $table = $('th:contains("Case Count")').closest('table');
+    type: 'table',
+    aggregate: 'county',
+    async scraper() {
+      const counties = [];
+      const $ = await fetch.page(this.url);
+      const $table = $('th:contains("Case Count")').closest('table');
 
-      let $trs = $table.find('tbody > tr');
+      const $trs = $table.find('tbody > tr');
 
       $trs.each((index, tr) => {
         if (index < 1) {
           return;
         }
-        let $tr = $(tr);
+        const $tr = $(tr);
         counties.push({
           county: transform.addCounty(parse.string($tr.find('td:first-child').text())),
           cases: parse.number($tr.find('td:last-child').text())
@@ -1554,16 +1910,27 @@ let scrapers = [
   {
     state: 'OH',
     country: 'USA',
-    url: 'https://odh.ohio.gov/wps/portal/gov/odh/know-our-programs/Novel-Coronavirus/welcome/',
-    scraper: async function() {
-      let counties = [];
-      let $ = await fetch.page(this.url);
-      let $paragraph = $('p:contains("Number of counties with cases:")').text();
-      let regExp = /\(([^)]+)\)/;
-      let parsed = regExp.exec($paragraph);
-      let arrayOfCounties = parsed[1].split(',');
-      arrayOfCounties.map(county => {
-        let splitCounty = county.trim().split(' ');
+    aggregate: 'county',
+    async scraper() {
+      const counties = [];
+      let arrayOfCounties = [];
+      if (datetime.scrapeDateIsBefore('2020-3-16')) {
+        this.url = 'https://odh.ohio.gov/wps/portal/gov/odh/know-our-programs/Novel-Coronavirus/welcome/';
+        const $ = await fetch.page(this.url);
+        const $paragraph = $('p:contains("Number of counties with cases:")').text();
+        const regExp = /\(([^)]+)\)/;
+        const parsed = regExp.exec($paragraph);
+        arrayOfCounties = parsed[1].split(',');
+      } else {
+        this.url = 'https://coronavirus.ohio.gov/wps/portal/gov/covid-19/';
+        const $ = await fetch.page(this.url);
+        const $paragraph = $('p:contains("Number of counties with cases:")').text();
+        const parsed = $paragraph.replace(/([()])/g, '').replace('* Number of counties with cases: ', '');
+        arrayOfCounties = parsed.split(',');
+      }
+
+      arrayOfCounties.forEach(county => {
+        const splitCounty = county.trim().split(' ');
         counties.push({
           county: transform.addCounty(parse.string(splitCounty[0])),
           cases: parse.number(splitCounty[1])
@@ -1576,61 +1943,28 @@ let scrapers = [
     state: 'CT',
     country: 'USA',
     url: 'https://portal.ct.gov/Coronavirus',
-    scraper: async function() {
-      let counties = [];
-      let $ = await fetch.page(this.url);
-      let $lis = $('span:contains("Latest COVID-19 Testing Data in Connecticut")')
-                  .nextAll('ul')
-                  .first()
-                  .find('li');
+    type: 'list',
+    aggregate: 'county',
+    async scraper() {
+      const counties = [];
+      const $ = await fetch.page(this.url);
+      const $lis = $('span:contains("Latest COVID-19 Testing Data in Connecticut")')
+        .nextAll('ul')
+        .first()
+        .find('li');
 
       $lis.each((index, li) => {
-        if(index < 1) {
-          return
+        if (index < 1) {
+          return;
         }
-        let countyData = $(li).text().split(/:\s*/);
+        const countyData = $(li)
+          .text()
+          .split(/:\s*/);
         counties.push({
           county: parse.string(countyData[0]),
           cases: parse.number(countyData[1])
         });
-      })
-      return counties;
-    }
-  },
-  {
-    state: 'MD',
-    country: 'USA',
-    url: 'http://opendata.arcgis.com/datasets/ca77764e722c442986ef6514da88411c_0.csv',
-    scraper: async function() {
-      let data = await fetch.csv(this.url);
-
-      let counties = [];
-      for (let county of data) {
-        if (county.PARISH === 'Out of State Resident') {
-          continue;
-        }
-        if (county.PARISH === 'Parish Under Investigation') {
-          continue;
-        }
-        let item = {
-          cases: parse.number(county.COVID19Cases),
-          recovered: parse.number(county.COVID19Recovered),
-          deaths: parse.number(county.COVID19Deaths)
-        };
-
-        let itemName = parse.string(county.COUNTY);
-        if (itemName === 'Baltimore City') {
-          item.city = itemName;
-        }
-        else {
-          item.county = transform.addCounty(itemName);
-        }
-
-        counties.push(item);
-      }
-
-      counties.push(transform.sumData(counties));
-
+      });
       return counties;
     }
   },
@@ -1639,10 +1973,10 @@ let scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://hhsa.cosb.us/publichealth/communicable-disease/coronavirus/',
-    scraper: async function() {
-      let $ = await fetch.page(this.url);
+    async scraper() {
+      const $ = await fetch.page(this.url);
 
-      let $table = $('h1:contains("San Benito County COVID-19 Case Count")')
+      const $table = $('h1:contains("San Benito County COVID-19 Case Count")')
         .nextAll('table')
         .first();
 
@@ -1668,6 +2002,139 @@ let scrapers = [
       };
     }
   },
+  {
+    country: 'FRA',
+    url: 'https://raw.githubusercontent.com/opencovid19-fr/data/master/dist/chiffres-cles.csv',
+    timeseries: true,
+    priority: 1,
+    aggregate: 'state',
+    async scraper() {
+      const data = await fetch.csv(this.url, false);
+      const states = [];
+
+      let date = datetime.getYYYYMMDD();
+      if (process.env.SCRAPE_DATE) {
+        date = datetime.getYYYYMMDD(new Date(process.env.SCRAPE_DATE));
+      }
+      for (const row of data) {
+        const granularity = row.granularite !== undefined ? parse.string(row.granularite) : '';
+        const rowDate = row.date !== undefined ? parse.string(row.date) : '';
+        if ((granularity === 'region' || granularity === 'collectivite-outremer') && rowDate === date) {
+          const state = row.maille_nom !== undefined ? parse.string(row.maille_nom) : '';
+          const cases = row.cas_confirmes !== undefined ? parse.number(row.cas_confirmes) : 0;
+          const deaths = row.deces !== undefined ? parse.number(row.deces) : 0;
+          let sourceUrl = row.source_url !== undefined ? parse.string(row.source_url) : this.url;
+          sourceUrl = sourceUrl === '' ? this.url : sourceUrl;
+          if (state !== '') {
+            const data = {
+              state,
+              cases,
+              deaths,
+              url: sourceUrl
+            };
+            if (rules.isAcceptable(data, null, null)) {
+              states.push(data);
+            }
+          }
+        }
+      }
+
+      // Add data for FRA
+      states.push(transform.sumData(states));
+
+      return states;
+    }
+  },
+  {
+    country: 'ESP',
+    url: 'https://opendata.arcgis.com/datasets/48fac2d7de0f43f9af938852e3748845_0.csv',
+    priority: 1,
+    aggregate: 'state',
+    async scraper() {
+      const data = await fetch.csv(this.url);
+      const states = [];
+      for (const row of data) {
+        const state = row.Texto !== undefined ? parse.string(row.Texto) : '';
+        const cases = row.TotalConfirmados !== undefined ? parse.number(row.TotalConfirmados) : 0;
+        const deaths = row.TotalFallecidos !== undefined ? parse.number(row.TotalFallecidos) : 0;
+        const recovered = row.TotalRecuperados !== undefined ? parse.number(row.TotalRecuperados) : 0;
+        if (state !== '') {
+          const data = {
+            state,
+            cases,
+            deaths,
+            recovered
+          };
+          if (rules.isAcceptable(data, null, this._reject)) {
+            states.push(data);
+          }
+        }
+      }
+      // Add data for ESP
+      states.push(transform.sumData(states));
+
+      return states;
+    }
+  },
+  {
+    state: 'MD',
+    country: 'USA',
+    url: 'https://coronavirus.maryland.gov/',
+    aggregate: 'county',
+    async scraper() {
+      const counties = [];
+      const $ = await fetch.headless(this.url);
+      const paragraph = $('p:contains("Number of Confirmed Cases:")')
+        .next('p')
+        .text();
+
+      paragraph.split(')').forEach(splitCounty => {
+        if (splitCounty.length > 1) {
+          let county = parse.string(splitCounty.substring(0, splitCounty.indexOf('(')).trim());
+          // check for Baltimore City
+          if (county !== 'Baltimore City') {
+            county = transform.addCounty(county);
+          }
+          const cases = parse.number(splitCounty.substring(splitCounty.indexOf('(') + 1, splitCounty.length).trim());
+          counties.push({
+            county,
+            cases
+          });
+        }
+      });
+      return counties;
+    }
+  },
+  {
+    country: 'AUS',
+    url: 'https://www.health.gov.au/news/health-alerts/novel-coronavirus-2019-ncov-health-alert/coronavirus-covid-19-current-situation-and-case-numbers',
+    type: 'table',
+    priority: 1,
+    aggregate: 'state',
+    async scraper() {
+      const states = [];
+      const $ = await fetch.page(this.url);
+
+      const $table = $('.health-table__responsive > table');
+
+      const $trs = $table.find('tbody > tr:not(:first-child):not(:last-child)');
+
+      $trs.each((index, tr) => {
+        const $tr = $(tr);
+        const state = parse.string($tr.find('td:first-child').text());
+        const cases = parse.number($tr.find('td:nth-child(2)').text());
+        states.push({
+          state,
+          cases
+        });
+      });
+
+      // Add data for AUS itself
+      states.push(transform.sumData(states));
+
+      return states;
+    }
+  }
 ];
 
 export default scrapers;

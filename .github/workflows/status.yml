@@ -1,9 +1,11 @@
-name: Test CI
+name: Scraper Status CI
 
-on: [push, pull_request]
+on:
+  schedule:
+    - cron: '0 */2 * * *' # Runs every 2 hours
 
 jobs:
-  build:
+  status:
     runs-on: [macOS-latest]
     steps:
       - uses: actions/checkout@v1 # without submodules
@@ -27,9 +29,11 @@ jobs:
       - name: Install
         run: |
           yarn
-      - name: Test
+      - name: Build
         run: |
-          yarn test
-      - name: Lint
+          yarn start
+      - name: Notify Slack
+        env:
+          SLACK_STATUS_HOOK: ${{ secrets.SLACK_STATUS_HOOK }}
         run: |
-          yarn lint
+          node ./scripts/statusSlackBot.js send ${SLACK_STATUS_HOOK}
