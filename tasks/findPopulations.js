@@ -33,7 +33,8 @@ async function readPopulationData(featureCollection) {
       Australia: await readPopulationFromCSV('population-australia-states.csv'),
       Canada: await readPopulationFromCSV('population-canada-provinces.csv'),
       Italy: await readPopulationFromCSV('population-italy-regions.csv'),
-      USA: await readPopulationFromCSV('population-usa-states-abbrev.csv')
+      USA: await readPopulationFromCSV('population-usa-states-abbrev.csv'),
+      Brazil: await readPopulationFromCSV('population-brazil-states-abbrev.csv')
     },
     byCountry: {},
     supplemental: await readPopulationFromCSV('population-supplemental.csv')
@@ -43,6 +44,7 @@ async function readPopulationData(featureCollection) {
   populations.byState.CAN = populations.byState.Canada;
   populations.byState.ITA = populations.byState.Italy;
   populations.byState.AUS = populations.byState.Australia;
+  populations.byState.BRA = populations.byState.Brazil;
 
   // Store data from features
   for (const feature of featureCollection.features) {
@@ -129,6 +131,10 @@ const generatePopulations = async ({ locations, featureCollection, report, optio
 
   let populationFound = 0;
   for (const location of locations) {
+    if (location.population) {
+      continue;
+    }
+
     const population = getPopulation(location);
 
     if (population) {

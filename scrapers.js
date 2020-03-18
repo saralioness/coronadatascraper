@@ -41,9 +41,32 @@ const scrapers = [
     }
   },
   {
-    url: 'https://opendata.arcgis.com/datasets/d14de7e28b0448ab82eb36d6f25b1ea1_0.csv',
+    state: 'IL',
+    country: 'USA',
+    priority: 1,
+    url: 'http://www.dph.illinois.gov/sites/default/files/COVID19/COVID19CountyResults.json',
+    async scraper() {
+      const data = await fetch.json(this.url);
+
+      const counties = [];
+
+      for (const county of data.characteristics_by_county.values) {
+        counties.push({
+          county: transform.addCounty(county.County),
+          cases: parse.number(county.confirmed_cases),
+          tested: parse.number(county.total_tested)
+        });
+      }
+      counties.push(transform.sumData(counties));
+
+      return counties;
+    }
+  },
+  {
     country: 'USA',
     state: 'IN',
+    priority: 1,
+    url: 'https://opendata.arcgis.com/datasets/d14de7e28b0448ab82eb36d6f25b1ea1_0.csv',
     aggregate: 'county',
     _countyMap: {
       'Verm.': 'Vermillion',
@@ -64,6 +87,8 @@ const scrapers = [
           tested: parse.number(county.Total_Tested)
         });
       }
+
+      counties.push(transform.sumData(counties));
 
       return counties;
     }
@@ -472,15 +497,40 @@ const scrapers = [
     async scraper() {
       const $ = await fetch.page(this.url);
 
+      if (datetime.scrapeDateIsBefore('2020-3-17')) {
+        let cases = 0;
+        cases += parse.number(
+          $('p:contains("Number of PHL positives")')
+            .first()
+            .text()
+            .split(': ')[1]
+        );
+        cases += parse.number(
+          $('p:contains("Number of commercial lab positives")')
+            .first()
+            .text()
+            .split(': ')[1]
+        );
+
+        return {
+          cases,
+          tested: parse.number(
+            $('p:contains("Number of people tested overall")')
+              .first()
+              .text()
+              .split(': ')[1]
+          )
+        };
+      }
       let cases = 0;
       cases += parse.number(
-        $('p:contains("Number of PHL positives")')
+        $('li:contains("Number of PHL positives")')
           .first()
           .text()
           .split(': ')[1]
       );
       cases += parse.number(
-        $('p:contains("Number of commercial lab positives")')
+        $('li:contains("Number of commercial lab positives")')
           .first()
           .text()
           .split(': ')[1]
@@ -489,7 +539,7 @@ const scrapers = [
       return {
         cases,
         tested: parse.number(
-          $('p:contains("Number of people tested overall")')
+          $('li:contains("Number of people tested overall")')
             .first()
             .text()
             .split(': ')[1]
@@ -537,24 +587,10 @@ const scrapers = [
     country: 'USA',
     url: 'https://docs.google.com/document/d/e/2PACX-1vRSxDeeJEaDxir0cCd9Sfji8ZPKzNaCPZnvRCbG63Oa1ztz4B4r7xG_wsoC9ucd_ei3--Pz7UD50yQD/pub',
     type: 'list',
-    async scraper() {
-      const $ = await fetch.page(this.url);
-
-      if (datetime.scrapeDateIs('2020-3-16')) {
-        return {
-          cases: parse.number(
-            $('span:contains("Positive")')
-              .text()
-              .split(':')[1]
-          ),
-          tested: parse.number(
-            $('span:contains("Total number of people tested")')
-              .text()
-              .split(':')[1]
-          )
-        };
-      }
-      if (datetime.scrapeDateIsBefore('2020-3-16')) {
+    scraper: {
+      '0': async function() {
+        this.url = 'https://docs.google.com/document/d/e/2PACX-1vRSxDeeJEaDxir0cCd9Sfji8ZPKzNaCPZnvRCbG63Oa1ztz4B4r7xG_wsoC9ucd_ei3--Pz7UD50yQD/pub';
+        const $ = await fetch.page(this.url);
         const counties = [];
 
         const $lis = $('p:contains("Positive cases by county of residence")')
@@ -616,8 +652,25 @@ const scrapers = [
         counties.push(transform.sumData(counties));
 
         return counties;
+      },
+      '2020-3-15': async function() {
+        this.url = 'https://docs.google.com/document/d/e/2PACX-1vRSxDeeJEaDxir0cCd9Sfji8ZPKzNaCPZnvRCbG63Oa1ztz4B4r7xG_wsoC9ucd_ei3--Pz7UD50yQD/pub';
+        this.type = 'paragraph';
+        const $ = await fetch.page(this.url);
+
+        return {
+          cases: parse.number(
+            $('span:contains("Positive")')
+              .text()
+              .split(':')[1]
+          ),
+          tested: parse.number(
+            $('span:contains("Total number of people tested")')
+              .text()
+              .split(':')[1]
+          )
+        };
       }
-      throw new Error('Hey remember how Colorado is awful at reporting data? You gotta do manual work again today to get it');
     }
   },
   {
@@ -689,17 +742,21 @@ const scrapers = [
           });
         });
       } else {
-        this.url = 'https://opendata.arcgis.com/datasets/cba425c2e5b8421c88827dc0ec8c663b_0.csv';
+        if (datetime.scrapeDateIsBefore('2020-3-17')) {
+          this.url = 'https://opendata.arcgis.com/datasets/cba425c2e5b8421c88827dc0ec8c663b_0.csv';
+        } else {
+          this.url = 'https://opendata.arcgis.com/datasets/79e1165ecb95496589d39faa25a83ad4_0.csv';
+        }
         this.type = 'csv';
 
         // Use the new map
         const data = await fetch.csv(this.url);
 
+        const unassigned = { county: UNASSIGNED, cases: 0, deaths: 0 };
         for (const county of data) {
-          if (county.PARISH === 'Out of State Resident') {
-            continue;
-          }
-          if (county.PARISH === 'Parish Under Investigation') {
+          if (county.PARISH === 'Out of State Resident' || county.PARISH === 'Out of State' || county.PARISH === 'Under Investigation' || county.PARISH === 'Parish Under Investigation') {
+            unassigned.cases += parse.number(county.Cases);
+            unassigned.deaths += parse.number(county.Deaths);
             continue;
           }
           const countyName = `${parse.string(county.PARISH)} Parish`;
@@ -709,6 +766,8 @@ const scrapers = [
             deaths: parse.number(county.Deaths)
           });
         }
+
+        counties.push(unassigned);
       }
 
       counties.push(transform.sumData(counties));
@@ -898,7 +957,8 @@ const scrapers = [
   {
     state: 'NY',
     country: 'USA',
-    url: 'https://www.health.ny.gov/diseases/communicable/coronavirus/',
+    // NY state changed URL
+    url: datetime.scrapeDateIsBefore('2020-3-17') ? 'https://www.health.ny.gov/diseases/communicable/coronavirus/' : 'https://coronavirus.health.ny.gov/county-county-breakdown-positive-cases',
     type: 'table',
     aggregate: 'county',
     _countyMap: {
@@ -910,7 +970,12 @@ const scrapers = [
       const counties = [];
       const $ = await fetch.page(this.url);
 
-      const $table = $('#case_count_table');
+      let $table;
+      if (datetime.scrapeDateIsBefore('2020-3-17')) {
+        $table = $('#case_count_table');
+      } else {
+        $table = $('table').first();
+      }
 
       const $trs = $table.find('tr:not(.total_row):not(:first-child)');
 
@@ -918,10 +983,12 @@ const scrapers = [
         const $tr = $(tr);
         let countyName = parse.string($tr.find('td:first-child').text()).replace(':', '');
         countyName = this._countyMap[countyName] || countyName;
-        counties.push({
-          county: transform.addCounty(countyName),
-          cases: parse.number($tr.find('td:last-child').text())
-        });
+        if (countyName !== 'New York State (Outside of NYC)' && countyName !== 'Total Positive Cases (Statewide)') {
+          counties.push({
+            county: transform.addCounty(countyName),
+            cases: parse.number($tr.find('td:last-child').text())
+          });
+        }
       });
 
       counties.push(transform.sumData(counties));
@@ -973,6 +1040,7 @@ const scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'https://www.sfdph.org/dph/alerts/coronavirus.asp',
+    type: 'paragraph',
     async scraper() {
       let deaths;
       let cases;
@@ -1184,10 +1252,21 @@ const scrapers = [
     async scraper() {
       const $ = await fetch.page(this.url);
 
-      // this is brittle as all hell
-      const $h3 = $('h3:contains("confirmed case")');
+      // Site currently contains information in a headline only
 
-      const matches = $h3.text().match(/there are (\d+) confirmed cases? in Yolo/);
+      if (datetime.scrapeDateIsBefore('2020-03-17')) {
+        const $h3 = $('h3:contains("confirmed case")');
+        const matches = $h3.text().match(/there are (\d+) confirmed cases? in Yolo/);
+
+        return {
+          cases: parse.number(matches[1])
+        };
+      }
+
+      // They started adding in asterisks like - there are **4 confirmed cases
+      const $h3 = $('h3:contains("confirmed case")');
+      const matches = $h3.text().match(/(\d+) confirmed case/);
+
       return {
         cases: parse.number(matches[1])
       };
@@ -1332,17 +1411,50 @@ const scrapers = [
     state: 'CA',
     country: 'USA',
     url: 'http://www.sjcphs.org/coronavirus.aspx#res',
-    async scraper() {
-      const $ = await fetch.page(this.url);
+    scraper: {
+      '0': async function() {
+        const $ = await fetch.page(this.url);
+        this.type = 'paragraph';
 
-      const h3 = $('h6:contains("confirmed cases of COVID-19")')
-        .first()
-        .text();
-      const cases = parse.number(h3.match(/\((\d+)\)/)[1]);
+        const h3 = $('h6:contains("confirmed cases of COVID-19")')
+          .first()
+          .text();
+        const cases = parse.number(h3.match(/\((\d+)\)/)[1]);
 
-      return {
-        cases
-      };
+        return {
+          cases
+        };
+      },
+      '2020-3-17': async function() {
+        const $ = await fetch.page(this.url);
+        this.type = 'table';
+
+        const $table = $('h3:contains("San Joaquin County COVID-19 Numbers at a Glance")').closest('table');
+
+        const $headers = $table.find('tbody > tr:nth-child(2) > td');
+        const $numbers = $table.find('tbody > tr:nth-child(3) > td');
+
+        let cases = 0;
+        let deaths = 0;
+
+        // Parse the table and ensure that the header labels match the expected value
+        $headers.each((index, td) => {
+          const $td = $(td);
+
+          if ($td.text().includes('Cases')) {
+            cases = parse.number($numbers.eq(index).text());
+          }
+
+          if ($td.text().includes('Deaths')) {
+            deaths = parse.number($numbers.eq(index).text());
+          }
+        });
+
+        return {
+          cases,
+          deaths
+        };
+      }
     }
   },
   {
@@ -1523,13 +1635,24 @@ const scrapers = [
       // Resource contains multiple updates shown chronologically however it is unclear now that
       // they will follow any reliable pattern. This captures the first one as the latest
 
+      if (datetime.scrapeDateIsBefore('2020-3-17')) {
+        const cases = parse.number(
+          $('font:contains("Glenn County COVID-19 Cases")')
+            .first()
+            .text()
+            .match(/Cases: (\d+)/)[1]
+        );
+        return {
+          cases
+        };
+      }
+
       const cases = parse.number(
-        $('font:contains("Glenn County COVID-19 Cases")')
+        $('span:contains("Glenn County COVID-19 Cases")')
           .first()
           .text()
           .match(/Cases: (\d+)/)[1]
       );
-
       return {
         cases
       };
@@ -1865,9 +1988,21 @@ const scrapers = [
             });
           }
         });
-      } else {
+      } else if (datetime.scrapeDateIsBefore('2020-3-17')) {
         const $table = $('table.ms-rteTable-default').first();
         const $trs = $table.find('tbody > tr');
+
+        $trs.each((index, tr) => {
+          const $tr = $(tr);
+          const data = {
+            county: parse.string($tr.find('td:first-child').text()),
+            cases: parse.number($tr.find('td:last-child').text())
+          };
+          counties.push(data);
+        });
+      } else {
+        const $countyTable = $('table.ms-rteTable-default').eq(1);
+        const $trs = $countyTable.find('tbody > tr');
 
         $trs.each((index, tr) => {
           const $tr = $(tr);
@@ -2079,30 +2214,61 @@ const scrapers = [
   {
     state: 'MD',
     country: 'USA',
-    url: 'https://coronavirus.maryland.gov/',
     aggregate: 'county',
-    async scraper() {
-      const counties = [];
-      const $ = await fetch.headless(this.url);
-      const paragraph = $('p:contains("Number of Confirmed Cases:")')
-        .next('p')
-        .text();
+    scraper: {
+      '0': async function() {
+        this.url = 'https://coronavirus.maryland.gov/';
+        this.type = 'paragraph';
 
-      paragraph.split(')').forEach(splitCounty => {
-        if (splitCounty.length > 1) {
-          let county = parse.string(splitCounty.substring(0, splitCounty.indexOf('(')).trim());
-          // check for Baltimore City
-          if (county !== 'Baltimore City') {
-            county = transform.addCounty(county);
+        const counties = [];
+        const $ = await fetch.headless(this.url);
+        const paragraph = $('p:contains("Number of Confirmed Cases:")')
+          .next('p')
+          .text();
+
+        paragraph.split(')').forEach(splitCounty => {
+          if (splitCounty.length > 1) {
+            let county = parse.string(splitCounty.substring(0, splitCounty.indexOf('(')).trim());
+            // check for Baltimore City
+            if (county !== 'Baltimore City') {
+              county = transform.addCounty(county);
+            }
+            const cases = parse.number(splitCounty.substring(splitCounty.indexOf('(') + 1, splitCounty.length).trim());
+            counties.push({
+              county,
+              cases
+            });
           }
-          const cases = parse.number(splitCounty.substring(splitCounty.indexOf('(') + 1, splitCounty.length).trim());
+        });
+
+        return counties;
+      },
+      '2020-3-17': async function() {
+        this.type = 'csv';
+        this.url = 'https://opendata.arcgis.com/datasets/3d9ca88970dd4689a701354d7fa6830b_0.csv';
+
+        const data = await fetch.csv(this.url);
+
+        const counties = [];
+        for (const county of data) {
+          let countyName;
+          if (county.COUNTY === 'Baltimore City') {
+            countyName = parse.string(county.COUNTY);
+          } else {
+            countyName = transform.addCounty(parse.string(county.COUNTY));
+          }
           counties.push({
-            county,
-            cases
+            county: countyName,
+            cases: parse.number(county.COVID19Cases),
+            deaths: parse.number(county.COVID19Deaths),
+            tested: parse.number(county.COVID19Recovered)
           });
         }
-      });
-      return counties;
+
+        counties.push(transform.sumData(counties));
+
+        return counties;
+      }
     }
   },
   {
@@ -2133,6 +2299,344 @@ const scrapers = [
       states.push(transform.sumData(states));
 
       return states;
+    }
+  },
+  {
+    country: 'BRA',
+    type: 'json',
+    priority: 1,
+    url: `http://plataforma.saude.gov.br/novocoronavirus/resources/scripts/database.js?v=${datetime.getYYYYMMDD()}`,
+    timeseries: true,
+    aggregate: 'county',
+    _dataIds: [
+      { uid: 11, name: 'Rondônia' },
+      { uid: 12, name: 'Acre' },
+      { uid: 13, name: 'Amazonas' },
+      { uid: 14, name: 'Roraima' },
+      { uid: 15, name: 'Pará' },
+      { uid: 16, name: 'Amapá' },
+      { uid: 17, name: 'Tocantins' },
+      { uid: 21, name: 'Maranhão' },
+      { uid: 22, name: 'Piauí' },
+      { uid: 23, name: 'Ceará' },
+      { uid: 24, name: 'Rio Grande do Norte' },
+      { uid: 25, name: 'Paraíba' },
+      { uid: 26, name: 'Pernambuco' },
+      { uid: 27, name: 'Alagoas' },
+      { uid: 28, name: 'Sergipe' },
+      { uid: 29, name: 'Bahia' },
+      { uid: 31, name: 'Minas Gerais' },
+      { uid: 32, name: 'Espírito Santo' },
+      { uid: 33, name: 'Rio de Janeiro' },
+      { uid: 35, name: 'São Paulo' },
+      { uid: 41, name: 'Paraná' },
+      { uid: 42, name: 'Santa Catarina' },
+      { uid: 43, name: 'Rio Grande do Sul' },
+      { uid: 50, name: 'Mato Grosso do Sul' },
+      { uid: 51, name: 'Mato Grosso' },
+      { uid: 52, name: 'Goiás' },
+      { uid: 53, name: 'Distrito Federal' },
+      { uid: 'PE', name: 'Peru' },
+      { uid: 'GF', name: 'Guiana Francesa' },
+      { uid: 'BF', name: 'Burkina Faso' },
+      { uid: 'FR', name: 'França' },
+      { uid: 'LY', name: 'Libéria' },
+      { uid: 'BY', name: 'Belarus' },
+      { uid: 'PK', name: 'Paquistão' },
+      { uid: 'ID', name: 'Indonésia' },
+      { uid: 'YE', name: 'Iêmen' },
+      { uid: 'MG', name: 'Madagascar' },
+      { uid: 'BO', name: 'Bolívia' },
+      { uid: 'CI', name: 'Costa do Marfim' },
+      { uid: 'DZ', name: 'Argélia' },
+      { uid: 'CH', name: 'Suíça' },
+      { uid: 'CM', name: 'Cameroun' },
+      { uid: 'MK', name: 'Macedônia do Norte' },
+      { uid: 'BW', name: 'Botsuana' },
+      { uid: 'UA', name: 'Ucrânia' },
+      { uid: 'KE', name: 'Quênia' },
+      { uid: 'TW', name: 'Taiwan' },
+      { uid: 'JO', name: 'Jordânia' },
+      { uid: 'MX', name: 'México' },
+      { uid: 'AE', name: 'Emirados Árabes Unidos' },
+      { uid: 'BZ', name: 'Belize' },
+      { uid: 'BR', name: 'Brasil' },
+      { uid: 'SL', name: 'Serra Leoa' },
+      { uid: 'ML', name: 'Mali' },
+      { uid: 'CD', name: 'República Democrática do Congo' },
+      { uid: 'IT', name: 'Itália' },
+      { uid: 'SO', name: 'Somália' },
+      { uid: 'AF', name: 'Afeganistão' },
+      { uid: 'BD', name: 'Bangladesh' },
+      { uid: 'DO', name: 'República Dominicana' },
+      { uid: 'GW', name: 'Guiné-Bissau' },
+      { uid: 'GH', name: 'Gana' },
+      { uid: 'AT', name: 'Áustria' },
+      { uid: 'SE', name: 'Suécia' },
+      { uid: 'TR', name: 'Turquia' },
+      { uid: 'UG', name: 'Uganda' },
+      { uid: 'MZ', name: 'Moçambique' },
+      { uid: 'JP', name: 'Japão' },
+      { uid: 'NZ', name: 'Nova Zelândia' },
+      { uid: 'CU', name: 'Cuba' },
+      { uid: 'VE', name: 'Venezuela' },
+      { uid: 'PT', name: 'Portugal' },
+      { uid: 'CO', name: 'Colômbia' },
+      { uid: 'MR', name: 'Mauritânia' },
+      { uid: 'AO', name: 'Angola' },
+      { uid: 'DE', name: 'Alemanha' },
+      { uid: 'SD', name: 'Sudão' },
+      { uid: 'TH', name: 'Tailândia' },
+      { uid: 'AU', name: 'Austrália' },
+      { uid: 'PG', name: 'Papua Nova Guiné' },
+      { uid: 'IQ', name: 'Iraque' },
+      { uid: 'HR', name: 'Croácia' },
+      { uid: 'GL', name: 'Groelândia' },
+      { uid: 'NE', name: 'Níger' },
+      { uid: 'DK', name: 'Dinamarca' },
+      { uid: 'LV', name: 'Letônia' },
+      { uid: 'RO', name: 'Romênia' },
+      { uid: 'ZM', name: 'Zâmbia' },
+      { uid: 'IR', name: 'Irã' },
+      { uid: 'MM', name: 'Myanmar' },
+      { uid: 'ET', name: 'Etiópia' },
+      { uid: 'GT', name: 'Guatemala' },
+      { uid: 'SR', name: 'Suriname' },
+      { uid: 'EH', name: 'Saara Ocidental' },
+      { uid: 'CZ', name: 'República Tcheca' },
+      { uid: 'TD', name: 'Chade' },
+      { uid: 'AL', name: 'Albânia' },
+      { uid: 'FI', name: 'Finlândia' },
+      { uid: 'SY', name: 'Síria' },
+      { uid: 'KG', name: 'Quirguistão' },
+      { uid: 'SB', name: 'Ilhas Salomão' },
+      { uid: 'OM', name: 'Omã' },
+      { uid: 'PA', name: 'Panamá' },
+      { uid: 'AR', name: 'Argentina' },
+      { uid: 'GB', name: 'Reino Unido' },
+      { uid: 'CR', name: 'Costa Rica' },
+      { uid: 'PY', name: 'Paraguai' },
+      { uid: 'GN', name: 'Guiné' },
+      { uid: 'IE', name: 'Irlanda' },
+      { uid: 'NG', name: 'Nigéria' },
+      { uid: 'TN', name: 'Tunísia' },
+      { uid: 'PL', name: 'Polônia' },
+      { uid: 'NA', name: 'Namíbia' },
+      { uid: 'ZA', name: 'África do Sul' },
+      { uid: 'EG', name: 'Egito' },
+      { uid: 'TZ', name: 'Tanzânia' },
+      { uid: 'GE', name: 'Geórgia' },
+      { uid: 'SA', name: 'Arábia Saudita' },
+      { uid: 'VN', name: 'Vietnã' },
+      { uid: 'RU', name: 'Rússia' },
+      { uid: 'HT', name: 'Haiti' },
+      { uid: 'BA', name: 'Bósnia e Herzegovina' },
+      { uid: 'IN', name: 'Índia' },
+      { uid: 'CN', name: 'China' },
+      { uid: 'CA', name: 'Canadá' },
+      { uid: 'SV', name: 'El Salvador' },
+      { uid: 'GY', name: 'Guiana' },
+      { uid: 'BE', name: 'Bélgica' },
+      { uid: 'GQ', name: 'Guiné Equatorial' },
+      { uid: 'LS', name: 'Lesoto' },
+      { uid: 'BG', name: 'Bulgária' },
+      { uid: 'BI', name: 'Burundi' },
+      { uid: 'DJ', name: 'Djibouti' },
+      { uid: 'AZ', name: 'Azerbaijão' },
+      { uid: 'MY', name: 'Malásia' },
+      { uid: 'PH', name: 'Filipinas' },
+      { uid: 'UY', name: 'Uruguai' },
+      { uid: 'CG', name: 'República Democrática do Congo' },
+      { uid: 'RS', name: 'Sérvia' },
+      { uid: 'ME', name: 'Montenegro' },
+      { uid: 'EE', name: 'Estônia' },
+      { uid: 'RW', name: 'Ruanda' },
+      { uid: 'AM', name: 'Armênia' },
+      { uid: 'SN', name: 'Senegal' },
+      { uid: 'TG', name: 'Togo' },
+      { uid: 'ES', name: 'Espanha' },
+      { uid: 'GA', name: 'Gabão' },
+      { uid: 'HU', name: 'Hungria' },
+      { uid: 'MW', name: 'Malawi' },
+      { uid: 'TJ', name: 'Tajiquistão' },
+      { uid: 'KH', name: 'Camboja' },
+      { uid: 'KR', name: 'Coreia do Sul' },
+      { uid: 'HN', name: 'Honduras' },
+      { uid: 'IS', name: 'Islândia' },
+      { uid: 'NI', name: 'Nicarágua' },
+      { uid: 'CL', name: 'Chile' },
+      { uid: 'MA', name: 'Marrocos' },
+      { uid: 'LR', name: 'Libéria' },
+      { uid: 'NL', name: 'Holanda' },
+      { uid: 'CF', name: 'República Centro-Africana' },
+      { uid: 'SK', name: 'Eslováquia' },
+      { uid: 'LT', name: 'Lituânia' },
+      { uid: 'ZW', name: 'Zimbábue' },
+      { uid: 'LK', name: 'Sri Lanka' },
+      { uid: 'IL', name: 'Israel' },
+      { uid: 'LA', name: 'Laos' },
+      { uid: 'KP', name: 'Coreia do Norte' },
+      { uid: 'GR', name: 'Grécia' },
+      { uid: 'TM', name: 'Turcomenistão' },
+      { uid: 'EC', name: 'Equador' },
+      { uid: 'BJ', name: 'Benin' },
+      { uid: 'SI', name: 'Eslovênia' },
+      { uid: 'NO', name: 'Noruega' },
+      { uid: 'MD', name: 'Moldávia' },
+      { uid: 'LB', name: 'Líbano' },
+      { uid: 'NP', name: 'Nepal' },
+      { uid: 'ER', name: 'Eritreia' },
+      { uid: 'US', name: 'Estados Unidos' },
+      { uid: 'KZ', name: 'Cazaquistão' },
+      { uid: 'SZ', name: 'Suazilândia' },
+      { uid: 'UZ', name: 'Uzbequistão' },
+      { uid: 'MN', name: 'Mongólia' },
+      { uid: 'BT', name: 'Butão' },
+      { uid: 'NC', name: 'Nova Caledônia' },
+      { uid: 'FJ', name: 'Fiji' },
+      { uid: 'KW', name: 'Kuwait' },
+      { uid: 'TL', name: 'Timor-Leste' },
+      { uid: 'BS', name: 'Bahamas' },
+      { uid: 'VU', name: 'Vanuatu' },
+      { uid: 'FK', name: 'Ilhas Malvinas' },
+      { uid: 'GM', name: 'Gâmbia' },
+      { uid: 'QA', name: 'Catar' },
+      { uid: 'JM', name: 'Jamaica' },
+      { uid: 'CY', name: 'Chipre' },
+      { uid: 'PR', name: 'Porto Rico' },
+      { uid: 'PS', name: 'Palestina' },
+      { uid: 'BN', name: 'Brunei' },
+      { uid: 'TT', name: 'Trinidad e Tobago' },
+      { uid: 'CV', name: 'Cabo Verde' },
+      { uid: 'PF', name: 'Polinésia Francesa' },
+      { uid: 'WS', name: 'Samoa' },
+      { uid: 'LU', name: 'Luxemburgo' },
+      { uid: 'RE', name: 'Ilha da Reunião' },
+      { uid: 'KM', name: 'Comores' },
+      { uid: 'MU', name: 'Maurício' },
+      { uid: 'FO', name: 'Ilhas Faroé' },
+      { uid: 'MQ', name: 'Martinica' },
+      { uid: 'ST', name: 'São Tomé e Príncipe' },
+      { uid: 'AN', name: 'Antilhas Neerlandesas' },
+      { uid: 'DM', name: 'Dominica' },
+      { uid: 'GP', name: 'Guadalupe' },
+      { uid: 'TO', name: 'Tonga' },
+      { uid: 'KI', name: 'Quiribati' },
+      { uid: 'FM', name: 'Micronésia' },
+      { uid: 'BH', name: 'Bahrein' },
+      { uid: 'AD', name: 'Andorra' },
+      { uid: 'MP', name: 'Ilhas Marianas do Norte' },
+      { uid: 'PW', name: 'Palau' },
+      { uid: 'SC', name: 'Seicheles' },
+      { uid: 'AG', name: 'Antígua e Barbuda' },
+      { uid: 'BB', name: 'Barbados' },
+      { uid: 'TC', name: 'Turks e Caicos' },
+      { uid: 'VC', name: 'São Vicente e Granadinas' },
+      { uid: 'LC', name: 'Santa Lúcia' },
+      { uid: 'YT', name: 'Mayotte' },
+      { uid: 'VI', name: 'Ilhas Virgens Americanas' },
+      { uid: 'GD', name: 'Granada' },
+      { uid: 'MT', name: 'Malta' },
+      { uid: 'MV', name: 'Maldivas' },
+      { uid: 'KY', name: 'Ilhas Cayman' },
+      { uid: 'KN', name: 'São Cristóvão e Névis' },
+      { uid: 'MS', name: 'Montserrat' },
+      { uid: 'NU', name: 'Niue' },
+      { uid: 'PM', name: 'São Pedro e Miquelão' },
+      { uid: 'CK', name: 'Ilhas Cook' },
+      { uid: 'WF', name: 'Wallis e Futuna' },
+      { uid: 'AS', name: 'Samoa Americana' },
+      { uid: 'MH', name: 'Ilhas Marshall' },
+      { uid: 'AW', name: 'Aruba' },
+      { uid: 'LI', name: 'Liechtenstein' },
+      { uid: 'VG', name: 'Ilhas Virgens Britânicas' },
+      { uid: 'SH', name: 'Santa Helena' },
+      { uid: 'JE', name: 'Jersey' },
+      { uid: 'AI', name: 'Anguilla' },
+      { uid: 'GG', name: 'Guernsey' },
+      { uid: 'SM', name: 'San Marino' },
+      { uid: 'BM', name: 'Bermudas' },
+      { uid: 'TV', name: 'Tuvalu' },
+      { uid: 'NR', name: 'Nauru' },
+      { uid: 'GI', name: 'Gibraltar' },
+      { uid: 'PN', name: 'Ilhas Pitcairn' },
+      { uid: 'MC', name: 'Mônaco' },
+      { uid: 'VA', name: 'Vaticano' },
+      { uid: 'IM', name: 'Ilha de Man' },
+      { uid: 'GU', name: 'Guam' },
+      { uid: 'SG', name: 'Singapura' },
+      { uid: 'SS', name: 'Sudão do Sul' },
+      { uid: 'SX', name: 'São Martinho' },
+      { uid: 'BL', name: 'São Bartolomeu' }
+    ],
+    _ufs: {
+      Acre: ['AC', 881935, [-9.0238, -70.812]],
+      Alagoas: ['AL', 3337357, [-9.5713, -36.782]],
+      Amapá: ['AP', 845731, [0.902, -52.003]],
+      Amazonas: ['AM', 4144597, [-3.4168, -65.8561]],
+      Bahia: ['BA', 14873064, [-12.5797, -41.7007]],
+      Ceará: ['CE', 9132078, [-5.4984, -39.3206]],
+      'Distrito Federal': ['DF', 3015268, [-15.7998, -47.8645]],
+      'Espírito Santo': ['ES', 4018650, [-19.1834, -40.3089]],
+      Goiás: ['GO', 7018354, [-15.827, -49.8362]],
+      Maranhão: ['MA', 7075181, [-4.9609, -45.2744]],
+      'Mato Grosso': ['MT', 3484466, [-12.6819, -56.9211]],
+      'Mato Grosso do Sul': ['MS', 2778986, [-20.7722, -54.7852]],
+      'Minas Gerais': ['MG', 21168791, [-18.5122, -44.555]],
+      Paraná: ['PR', 11433957, [-25.2521, -52.0215]],
+      Paraíba: ['PB', 4018127, [-7.24, -36.782]],
+      Pará: ['PA', 11433957, [-1.9981, -54.9306]],
+      Pernambuco: ['PE', 9557071, [-8.8137, -36.9541]],
+      Piauí: ['PI', 3273227, [-7.7183, -42.7289]],
+      'Rio Grande do Norte': ['RN', 3506853, [-5.4026, -36.9541]],
+      'Rio Grande do Sul': ['RS', 11377239, [-30.0346, -51.2177]],
+      'Rio de Janeiro': ['RJ', 17264943, [-22.9099, -43.2095]],
+      Rondônia: ['RO', 1777225, [-11.5057, -63.5806]],
+      Roraima: ['RR', 60576, [2.7376, -62.0751]],
+      'Santa Catarina': ['SC', 7164788, [-27.2423, -50.2189]],
+      Sergipe: ['SE', 2298696, [-10.5741, -37.3857]],
+      'São Paulo': ['SP', 45919049, [-23.5505, -46.6333]],
+      Tocantins: ['TO', 1572866, [-10.1753, -48.2982]]
+    },
+    async scraper() {
+      const scrapeDate = process.env.SCRAPE_DATE ? new Date(process.env.SCRAPE_DATE) : datetime.getDate();
+      // https://pt.wikipedia.org/wiki/Lista_de_unidades_federativas_do_Brasil_por_popula%C3%A7%C3%A3o
+      const ufs = this._ufs;
+
+      const labels = {};
+      /* 
+      open and extract http://plataforma.saude.gov.br/novocoronavirus/
+      JSON.stringify([...$('[data-uid]').map(function () { return ({ uid: $(this).data('uid'), name: $(this).data('name') }) })])
+      */
+      const dataIds = this._dataIds;
+      dataIds.forEach(label => {
+        if (typeof label.uid === 'number') labels[label.uid] = ufs[label.name];
+      });
+
+      const data = await fetch.page(this.url, false);
+      const dataJson = JSON.parse(data.text().replace('var database=', ''));
+
+      const dataBrazil = [];
+
+      dataJson.brazil
+        .filter(row => row.date === datetime.getDDMMYYYY(scrapeDate, '/'))
+        .forEach(dateData => {
+          // const date = dateData.date.split('/');
+          // const dataDate = new Date(parseInt(date[2], 10), parseInt(date[1], 10) - 1, parseInt(date[0], 10));
+          dateData.values.forEach(value => {
+            dataBrazil.push({
+              // date: dataDate, // not used yet, will always equal scrape date
+              state: labels[parseInt(value.uid, 10)][0],
+              cases: value.cases || 0,
+              deaths: value.deaths || 0,
+              population: labels[parseInt(value.uid, 10)][1],
+              coordinates: [labels[parseInt(value.uid, 10)][2][1], labels[parseInt(value.uid, 10)][2][0]]
+            });
+          });
+        });
+
+      dataBrazil.push(transform.sumData(dataBrazil));
+      return dataBrazil;
     }
   }
 ];
