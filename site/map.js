@@ -3,8 +3,8 @@
 // import * as mapboxgl from 'mapbox-gl/dist/mapbox-gl.js';
 import * as fetch from './lib/fetch.js';
 
-import { isCounty, isState, isCountry, getLocationGranularityName } from '../src/events/crawler/lib/geography.js';
 import { getRatio, getPercent } from './lib/math.js';
+import { isCounty, isState, isCountry, getLocationGranularityName } from './lib/geography.js';
 import * as color from './lib/color.js';
 
 mapboxgl.accessToken = 'pk.eyJ1IjoibGF6ZCIsImEiOiJjazd3a3VoOG4wM2RhM29rYnF1MDJ2NnZrIn0.uPYVImW8AVA71unqE8D8Nw';
@@ -46,6 +46,8 @@ function updateMap(date) {
 
   let chartDataMin;
   let chartDataMax;
+  let lowestLocation = null;
+  let highestLocation = null;
 
   data.locations.forEach(function(location, index) {
     // Calculate worst affected percent
@@ -55,10 +57,12 @@ function updateMap(date) {
         const infectionPercent = locationData.cases / location.population;
         if (infectionPercent > worstAffectedPercent) {
           worstAffectedPercent = infectionPercent;
+          highestLocation = location;
         }
         // Calculate least affected percent
         if (infectionPercent !== 0 && infectionPercent < lowestInfectionPercent) {
           lowestInfectionPercent = infectionPercent;
+          lowestLocation = location;
         }
         chartDataMax = worstAffectedPercent;
         chartDataMin = lowestInfectionPercent;
@@ -84,6 +88,9 @@ function updateMap(date) {
     feature.properties.color = regionColor || color.noPopulationDataColor;
   });
 
+  console.log('Lowest infection', lowestLocation);
+  console.log('Highest infection', highestLocation);
+
   color.createLegend(chartDataMin, chartDataMax);
 }
 
@@ -91,6 +98,10 @@ function populateMap() {
   initData();
   updateMap();
 
+  /**
+   * @param {{ name: string; population: string?; }} location
+   * @param {{ cases: number; deaths:number?; recovered:number?; active:number?; }} locationData
+   */
   function popupTemplate(location, locationData) {
     let htmlString = `<div class="cds-Popup">`;
     htmlString += `<h6 class="spectrum-Heading spectrum-Heading--XXS">${location.name}</h6>`;
@@ -115,7 +126,7 @@ function populateMap() {
     if (locationData.recovered !== undefined) {
       htmlString += `<tr><th>Recovered:</th><td>${locationData.recovered.toLocaleString()}</td></tr>`;
     }
-    if (locationData.active !== locationData.cases) {
+    if (locationData.active && locationData.active !== locationData.cases) {
       htmlString += `<tr><th>Active:</th><td>${locationData.active.toLocaleString()}</td></tr>`;
     }
     htmlString += `</tbody></table>`;
@@ -267,7 +278,7 @@ function populateMap() {
       // based on the feature found.
       popup
         .setLngLat(e.lngLat)
-        .setHTML(popupTemplate(location, locationData, feature))
+        .setHTML(popupTemplate(location, locationData))
         .addTo(map);
     }
   }
